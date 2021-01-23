@@ -50,11 +50,11 @@ impl<S> ClipboardProvider for X11ClipboardContext<S>
 where
     S: Selection,
 {
-    fn new() -> Result<X11ClipboardContext<S>, Box<Error>> {
+    fn new() -> Result<X11ClipboardContext<S>, Box<dyn Error>> {
         Ok(X11ClipboardContext(X11Clipboard::new()?, PhantomData))
     }
 
-    fn get_contents(&mut self) -> Result<String, Box<Error>> {
+    fn get_contents(&mut self) -> Result<String, Box<dyn Error>> {
         Ok(String::from_utf8(self.0.load(
             S::atom(&self.0.getter.atoms),
             self.0.getter.atoms.utf8_string,
@@ -63,10 +63,28 @@ where
         )?)?)
     }
 
-    fn set_contents(&mut self, data: String) -> Result<(), Box<Error>> {
+    fn set_contents(&mut self, data: String) -> Result<(), Box<dyn Error>> {
         Ok(self.0.store(
             S::atom(&self.0.setter.atoms),
             self.0.setter.atoms.utf8_string,
+            data,
+        )?)
+    }
+
+    //@TODO returns Ok even if target does not exist
+    fn get_target_contents(&mut self, clipboard_type: impl ToString) -> Result<Vec<u8>, Box<dyn Error>> {
+        Ok(self.0.load(
+            S::atom(&self.0.getter.atoms),
+            self.0.getter.get_atom(&clipboard_type.to_string())?,
+            self.0.getter.atoms.property,
+            Duration::from_secs(3),
+        )?)
+    }
+
+    fn set_target_contents(&mut self, clipboard_type: impl ToString, data: &[u8]) -> Result<(), Box<dyn Error>> {
+        Ok(self.0.store(
+            S::atom(&self.0.setter.atoms),
+            self.0.setter.get_atom(&clipboard_type.to_string())?,
             data,
         )?)
     }
