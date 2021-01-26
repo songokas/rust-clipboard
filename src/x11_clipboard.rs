@@ -21,6 +21,7 @@ use common::*;
 use x11_clipboard_crate::Atoms;
 use x11_clipboard_crate::Clipboard as X11Clipboard;
 use x11_clipboard_crate::xcb::xproto::Atom;
+use std::collections::HashMap;
 
 pub trait Selection {
     fn atom(atoms: &Atoms) -> Atom;
@@ -86,6 +87,16 @@ where
             S::atom(&self.0.setter.atoms),
             self.0.setter.get_atom(&clipboard_type.to_string())?,
             data,
+        )?)
+    }
+
+    fn set_multiple_targets(&mut self, targets: HashMap<impl ToString, &[u8]>) -> Result<(), Box<dyn Error>> {
+        let hash: Result<HashMap<_, _>, Box<dyn Error>> = targets.into_iter()
+            .map(|(key, value)| Ok((self.0.setter.get_atom(&key.to_string())?, value)))
+            .collect();
+        Ok(self.0.store_multiple(
+            S::atom(&self.0.setter.atoms),
+            hash?,
         )?)
     }
 }

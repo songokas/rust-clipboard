@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 use std::error::Error;
+use std::collections::HashMap;
 
 // pub fn err(s: &str) -> Box<dyn Error> {
 //     Box::<dyn Error + Send + Sync>::from(s)
@@ -38,6 +39,13 @@ pub trait ClipboardProvider: Sized {
 
     fn set_target_contents(&mut self, _: impl ToString, data: &[u8]) -> Result<(), Box<dyn Error>> {
         return self.set_contents(String::from_utf8(data.to_vec())?)
+    }
+
+    fn set_multiple_targets(&mut self, targets: HashMap<impl ToString, &[u8]>) -> Result<(), Box<dyn Error>> {
+        for (key, value) in targets {
+            return self.set_target_contents(key, value);
+        }
+        return Ok(());
     }
 }
 
