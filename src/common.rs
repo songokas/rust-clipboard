@@ -17,9 +17,9 @@ limitations under the License.
 use std::error::Error;
 use std::collections::HashMap;
 
-// pub fn err(s: &str) -> Box<dyn Error> {
-//     Box::<dyn Error + Send + Sync>::from(s)
-// }
+pub fn err(s: &str) -> Box<dyn Error> {
+    Box::<dyn Error + Send + Sync>::from(s)
+}
 
 /// Trait for clipboard access
 pub trait ClipboardProvider: Sized {
@@ -33,11 +33,23 @@ pub trait ClipboardProvider: Sized {
     // TODO: come up with some platform-agnostic API for richer types
     // than just strings (c.f. issue #31)
 
-    fn get_target_contents(&mut self, _: impl ToString) -> Result<Vec<u8>, Box<dyn Error>> {
+    //@TODO implement os specific flags
+    fn get_target_contents(&mut self, target: impl ToString) -> Result<Vec<u8>, Box<dyn Error>> {
+        let clipboard_target = target.to_string();
+        if clipboard_target != "UTF8_STRING" {
+            let message = format!("Clipboard target {} not implemented", clipboard_target);
+            return Err(err(&message));
+        }
         return self.get_contents().map(|s| s.as_bytes().to_vec())
     }
 
-    fn set_target_contents(&mut self, _: impl ToString, data: &[u8]) -> Result<(), Box<dyn Error>> {
+    //@TODO implement os specific flags
+    fn set_target_contents(&mut self, target: impl ToString, data: &[u8]) -> Result<(), Box<dyn Error>> {
+        let clipboard_target = target.to_string();
+        if clipboard_target != "UTF8_STRING" {
+            let message = format!("Clipboard target {} not implemented", clipboard_target);
+            return Err(err(&message));
+        }
         return self.set_contents(String::from_utf8(data.to_vec())?)
     }
 
