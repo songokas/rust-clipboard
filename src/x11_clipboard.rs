@@ -100,3 +100,74 @@ where
         )?)
     }
 }
+
+
+#[cfg(test)]
+mod x11clipboard
+{
+    use super::*;
+    use std::process::Command;
+
+    type ClipboardContext = X11ClipboardContext;
+
+    // fn list_targets() -> String {
+    //     let output = Command::new("xclip")
+    //         .args(&["-selection", "clipboard", "-o", "-t", "TARGETS"])
+    //         .output()
+    //         .expect("failed to execute xclip");
+    //     return String::from_utf8_lossy(&output.stdout).to_string();
+    // }
+
+    fn get_target(target: &str) -> String {
+        let output = Command::new("xclip")
+            .args(&["-selection", "clipboard", "-o", "-t", target])
+            .output()
+            .expect("failed to execute xclip");
+        let contents = String::from_utf8_lossy(&output.stdout);
+        return contents.to_string();
+    }
+
+    #[test]
+    fn test_set_contents() {
+        let contents = "hello test";
+        let mut context = ClipboardContext::new().unwrap();
+        context.set_contents(contents.to_owned()).unwrap();
+
+        assert_eq!(contents, get_target("UTF8_STRING"));
+    }
+
+    #[test]
+    fn test_set_target_contents() {
+        let contents = b"hello test";
+        let mut context = ClipboardContext::new().unwrap();
+        context.set_target_contents("jumbo", contents).unwrap();
+        let result = context.get_target_contents("jumbo").unwrap();
+        assert_eq!(contents.to_vec(), result);
+        assert_eq!(String::from_utf8_lossy(&contents.to_vec()), get_target("jumbo"));
+    }
+
+    #[test]
+    fn test_set_multiple_target_contents() {
+        let c1 = "yes plain".as_bytes();
+        let c2 = "yes html".as_bytes();
+        let c3 = "yes files".as_bytes();
+        let mut context = ClipboardContext::new().unwrap();
+        let mut hash = HashMap::new();
+        hash.insert("jumbo", c1);
+        hash.insert("html", c2);
+        hash.insert("files", c3);
+
+        context.set_multiple_targets(hash).unwrap();
+
+        // std::thread::sleep(std::time::Duration::from_millis(6000));
+        // println!("all targets {}", list_targets()); 
+
+        let result = context.get_target_contents("jumbo").unwrap();
+        assert_eq!(String::from_utf8_lossy(&c1.to_vec()), get_target("jumbo"));
+        assert_eq!(c1.to_vec(), result);
+
+        let result = context.get_target_contents("html").unwrap();
+        assert_eq!(c2.to_vec(), result);
+        assert_eq!(String::from_utf8_lossy(&c2.to_vec()), get_target("html"));
+    }
+}
