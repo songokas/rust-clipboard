@@ -107,7 +107,7 @@ mod x11clipboard
 {
     use super::*;
     use std::process::Command;
-
+ 
     type ClipboardContext = X11ClipboardContext;
 
     // fn list_targets() -> String {
@@ -144,6 +144,16 @@ mod x11clipboard
         let result = context.get_target_contents("jumbo").unwrap();
         assert_eq!(contents.to_vec(), result);
         assert_eq!(String::from_utf8_lossy(&contents.to_vec()), get_target("jumbo"));
+    }
+
+    #[test]
+    fn test_set_large_target_contents() {
+        let contents = std::iter::repeat("X").take(100000).collect::<String>();
+        let mut context = ClipboardContext::new().unwrap();
+        context.set_target_contents("large", contents.as_bytes()).unwrap();
+        let result = context.get_target_contents("large").unwrap();
+        assert_eq!(contents.as_bytes().to_vec(), result);
+        assert_eq!(contents, get_target("large"));
     }
 
     #[test]
