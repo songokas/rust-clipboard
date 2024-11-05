@@ -19,9 +19,9 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::marker::PhantomData;
 use std::time::Duration;
-use x11_clipboard_crate::Atom;
-use x11_clipboard_crate::Atoms;
-use x11_clipboard_crate::Clipboard as X11Clipboard;
+use x11_clipboard::Atom;
+use x11_clipboard::Atoms;
+use x11_clipboard::Clipboard as X11Clipboard;
 
 use crate::ClipboardProvider;
 
