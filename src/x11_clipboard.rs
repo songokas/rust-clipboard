@@ -14,14 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// use common::*;
+use std::collections::HashMap;
 use std::error::Error;
-use std::time::Duration;
 use std::marker::PhantomData;
-use common::*;
+use std::time::Duration;
+use x11_clipboard_crate::Atom;
 use x11_clipboard_crate::Atoms;
 use x11_clipboard_crate::Clipboard as X11Clipboard;
-use x11_clipboard_crate::xcb::xproto::Atom;
-use std::collections::HashMap;
+
+use crate::ClipboardProvider;
 
 pub trait Selection {
     fn atom(atoms: &Atoms) -> Atom;
@@ -73,7 +75,10 @@ where
     }
 
     //@TODO returns Ok even if target does not exist
-    fn get_target_contents(&mut self, clipboard_type: impl ToString) -> Result<Vec<u8>, Box<dyn Error>> {
+    fn get_target_contents(
+        &mut self,
+        clipboard_type: impl ToString,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
         Ok(self.0.load(
             S::atom(&self.0.getter.atoms),
             self.0.getter.get_atom(&clipboard_type.to_string())?,
@@ -82,7 +87,11 @@ where
         )?)
     }
 
-    fn set_target_contents(&mut self, clipboard_type: impl ToString, data: &[u8]) -> Result<(), Box<dyn Error>> {
+    fn set_target_contents(
+        &mut self,
+        clipboard_type: impl ToString,
+        data: &[u8],
+    ) -> Result<(), Box<dyn Error>> {
         Ok(self.0.store(
             S::atom(&self.0.setter.atoms),
             self.0.setter.get_atom(&clipboard_type.to_string())?,
@@ -90,24 +99,25 @@ where
         )?)
     }
 
-    fn set_multiple_targets(&mut self, targets: HashMap<impl ToString, &[u8]>) -> Result<(), Box<dyn Error>> {
-        let hash: Result<HashMap<_, _>, Box<dyn Error>> = targets.into_iter()
+    fn set_multiple_targets(
+        &mut self,
+        targets: HashMap<impl ToString, &[u8]>,
+    ) -> Result<(), Box<dyn Error>> {
+        let hash: Result<HashMap<_, _>, Box<dyn Error>> = targets
+            .into_iter()
             .map(|(key, value)| Ok((self.0.setter.get_atom(&key.to_string())?, value)))
             .collect();
-        Ok(self.0.store_multiple(
-            S::atom(&self.0.setter.atoms),
-            hash?,
-        )?)
+        Ok(self
+            .0
+            .store_multiple(S::atom(&self.0.setter.atoms), hash?)?)
     }
 }
 
-
 #[cfg(test)]
-mod x11clipboard
-{
+mod x11clipboard {
     use super::*;
     use std::process::Command;
- 
+
     type ClipboardContext = X11ClipboardContext;
 
     // fn list_targets() -> String {
@@ -143,14 +153,19 @@ mod x11clipboard
         context.set_target_contents("jumbo", contents).unwrap();
         let result = context.get_target_contents("jumbo").unwrap();
         assert_eq!(contents.to_vec(), result);
-        assert_eq!(String::from_utf8_lossy(&contents.to_vec()), get_target("jumbo"));
+        assert_eq!(
+            String::from_utf8_lossy(&contents.to_vec()),
+            get_target("jumbo")
+        );
     }
 
     #[test]
     fn test_set_large_target_contents() {
         let contents = std::iter::repeat("X").take(100000).collect::<String>();
         let mut context = ClipboardContext::new().unwrap();
-        context.set_target_contents("large", contents.as_bytes()).unwrap();
+        context
+            .set_target_contents("large", contents.as_bytes())
+            .unwrap();
         let result = context.get_target_contents("large").unwrap();
         assert_eq!(contents.as_bytes().to_vec(), result);
         assert_eq!(contents, get_target("large"));
@@ -170,7 +185,7 @@ mod x11clipboard
         context.set_multiple_targets(hash).unwrap();
 
         // std::thread::sleep(std::time::Duration::from_millis(6000));
-        // println!("all targets {}", list_targets()); 
+        // println!("all targets {}", list_targets());
 
         let result = context.get_target_contents("jumbo").unwrap();
         assert_eq!(String::from_utf8_lossy(&c1.to_vec()), get_target("jumbo"));

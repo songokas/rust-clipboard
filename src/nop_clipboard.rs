@@ -14,8 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-use common::ClipboardProvider;
 use std::error::Error;
+
+use crate::ClipboardProvider;
 
 pub struct NopClipboardContext;
 
@@ -24,13 +25,17 @@ impl ClipboardProvider for NopClipboardContext {
         Ok(NopClipboardContext)
     }
     fn get_contents(&mut self) -> Result<String, Box<dyn Error>> {
-        println!("Attempting to get the contents of the clipboard, which hasn't yet been \
-                  implemented on this platform.");
+        println!(
+            "Attempting to get the contents of the clipboard, which hasn't yet been \
+                  implemented on this platform."
+        );
         Ok("".to_string())
     }
     fn set_contents(&mut self, _: String) -> Result<(), Box<dyn Error>> {
-        println!("Attempting to set the contents of the clipboard, which hasn't yet been \
-                  implemented on this platform.");
+        println!(
+            "Attempting to set the contents of the clipboard, which hasn't yet been \
+                  implemented on this platform."
+        );
         Ok(())
     }
 }

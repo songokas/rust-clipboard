@@ -14,12 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-use std::error::Error;
 use std::collections::HashMap;
-
-pub fn err(s: &str) -> Box<dyn Error> {
-    Box::<dyn Error + Send + Sync>::from(s)
-}
+use std::error::Error;
 
 /// Trait for clipboard access
 pub trait ClipboardProvider: Sized {
@@ -29,7 +25,7 @@ pub trait ClipboardProvider: Sized {
     /// Method to get the clipboard contents as a String
     fn get_contents(&mut self) -> Result<String, Box<dyn Error>>;
     /// Method to set the clipboard contents as a String
-    fn set_contents(&mut self, String) -> Result<(), Box<dyn Error>>;
+    fn set_contents(&mut self, contents: String) -> Result<(), Box<dyn Error>>;
     // TODO: come up with some platform-agnostic API for richer types
     // than just strings (c.f. issue #31)
 
@@ -40,24 +36,34 @@ pub trait ClipboardProvider: Sized {
             let message = format!("Clipboard target {} not implemented", clipboard_target);
             return Err(err(&message));
         }
-        return self.get_contents().map(|s| s.as_bytes().to_vec())
+        return self.get_contents().map(|s| s.as_bytes().to_vec());
     }
 
     //@TODO implement os specific flags
-    fn set_target_contents(&mut self, target: impl ToString, data: &[u8]) -> Result<(), Box<dyn Error>> {
+    fn set_target_contents(
+        &mut self,
+        target: impl ToString,
+        data: &[u8],
+    ) -> Result<(), Box<dyn Error>> {
         let clipboard_target = target.to_string();
         if clipboard_target != "UTF8_STRING" {
             let message = format!("Clipboard target {} not implemented", clipboard_target);
             return Err(err(&message));
         }
-        return self.set_contents(String::from_utf8(data.to_vec())?)
+        self.set_contents(String::from_utf8(data.to_vec())?)
     }
 
-    fn set_multiple_targets(&mut self, targets: HashMap<impl ToString, &[u8]>) -> Result<(), Box<dyn Error>> {
-        for (key, value) in targets {
+    fn set_multiple_targets(
+        &mut self,
+        targets: HashMap<impl ToString, &[u8]>,
+    ) -> Result<(), Box<dyn Error>> {
+        if let Some((key, value)) = targets.into_iter().next() {
             return self.set_target_contents(key, value);
         }
-        return Ok(());
+        Ok(())
     }
 }
 
+fn err(s: &str) -> Box<dyn Error> {
+    Box::<dyn Error + Send + Sync>::from(s)
+}

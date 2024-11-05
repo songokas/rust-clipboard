@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-use common::*;
+use crate::ClipboardProvider;
 use objc::runtime::{Object, Class};
 use objc_foundation::{INSArray, INSString, INSObject};
 use objc_foundation::{NSArray, NSDictionary, NSString, NSObject};
@@ -79,4 +79,8 @@ impl ClipboardProvider for OSXClipboardContext {
 #[inline]
 pub fn class(name: &str) -> *mut Class {
     unsafe { transmute(Class::get(name)) }
+}
+
+fn err(s: &str) -> Box<dyn Error> {
+    Box::<dyn Error + Send + Sync>::from(s)
 }
