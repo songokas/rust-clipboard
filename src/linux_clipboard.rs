@@ -1,4 +1,5 @@
 use core::error::Error;
+use std::collections::HashMap;
 
 use crate::common::*;
 use crate::wayland_clipboard::WaylandClipboardContext;
@@ -39,6 +40,36 @@ impl ClipboardProvider for LinuxClipboardContext {
         match &mut self.context {
             LinuxContext::Wayland(context) => context.set_contents(content),
             LinuxContext::X11(context) => context.set_contents(content),
+        }
+    }
+
+    //@TODO implement os specific flags
+    fn get_target_contents(&mut self, target: impl ToString) -> Result<Vec<u8>, Box<dyn Error>> {
+        match &mut self.context {
+            LinuxContext::Wayland(context) => context.get_target_contents(target),
+            LinuxContext::X11(context) => context.get_target_contents(target),
+        }
+    }
+
+    //@TODO implement os specific flags
+    fn set_target_contents(
+        &mut self,
+        target: impl ToString,
+        data: &[u8],
+    ) -> Result<(), Box<dyn Error>> {
+        match &mut self.context {
+            LinuxContext::Wayland(context) => context.set_target_contents(target, data),
+            LinuxContext::X11(context) => context.set_target_contents(target, data),
+        }
+    }
+
+    fn set_multiple_targets(
+        &mut self,
+        targets: HashMap<impl ToString, &[u8]>,
+    ) -> Result<(), Box<dyn Error>> {
+        match &mut self.context {
+            LinuxContext::Wayland(context) => context.set_multiple_targets(targets),
+            LinuxContext::X11(context) => context.set_multiple_targets(targets),
         }
     }
 
