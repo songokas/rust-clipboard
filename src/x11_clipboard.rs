@@ -74,16 +74,26 @@ where
         )?)
     }
 
-    //@TODO returns Ok even if target does not exist
     fn get_target_contents(
         &mut self,
-        clipboard_type: impl ToString,
+        target_type: impl ToString,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
         Ok(self.0.load(
             S::atom(&self.0.getter.atoms),
-            self.0.getter.get_atom(&clipboard_type.to_string())?,
+            self.0.getter.get_atom(&target_type.to_string())?,
             self.0.getter.atoms.property,
-            Duration::from_secs(3),
+            Duration::from_secs(1),
+        )?)
+    }
+
+    fn wait_for_target_contents(
+        &mut self,
+        target_type: impl ToString,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
+        Ok(self.0.load_wait(
+            S::atom(&self.0.getter.atoms),
+            self.0.getter.get_atom(&target_type.to_string())?,
+            self.0.getter.atoms.property,
         )?)
     }
 

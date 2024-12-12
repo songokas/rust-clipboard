@@ -43,7 +43,6 @@ impl ClipboardProvider for LinuxClipboardContext {
         }
     }
 
-    //@TODO implement os specific flags
     fn get_target_contents(&mut self, target: impl ToString) -> Result<Vec<u8>, Box<dyn Error>> {
         match &mut self.context {
             LinuxContext::Wayland(context) => context.get_target_contents(target),
@@ -51,7 +50,16 @@ impl ClipboardProvider for LinuxClipboardContext {
         }
     }
 
-    //@TODO implement os specific flags
+    fn wait_for_target_contents(
+        &mut self,
+        target: impl ToString,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
+        match &mut self.context {
+            LinuxContext::Wayland(context) => context.wait_for_target_contents(target),
+            LinuxContext::X11(context) => context.wait_for_target_contents(target),
+        }
+    }
+
     fn set_target_contents(
         &mut self,
         target: impl ToString,

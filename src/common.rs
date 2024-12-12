@@ -14,8 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+use core::time::Duration;
 use std::collections::HashMap;
 use std::error::Error;
+use std::thread::sleep;
 
 /// Trait for clipboard access
 pub trait ClipboardProvider: Sized {
@@ -37,6 +39,23 @@ pub trait ClipboardProvider: Sized {
             return Err(err(&message));
         }
         return self.get_contents().map(|s| s.as_bytes().to_vec());
+    }
+
+    fn wait_for_target_contents(
+        &mut self,
+        target: impl ToString,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
+        let target = target.to_string();
+        loop {
+            match self.get_target_contents(&target) {
+                Ok(data) if !data.is_empty() => return Ok(data),
+                Ok(_) => {
+                    sleep(Duration::from_secs(1));
+                    continue
+                },
+                Err(e) => return Err(e),
+            }
+        }
     }
 
     //@TODO implement os specific flags
