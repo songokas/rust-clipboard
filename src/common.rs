@@ -31,44 +31,37 @@ pub trait ClipboardProvider: Sized {
     // TODO: come up with some platform-agnostic API for richer types
     // than just strings (c.f. issue #31)
 
-    //@TODO implement os specific flags
-    fn get_target_contents(&mut self, target: impl ToString) -> Result<Vec<u8>, Box<dyn Error>> {
-        let clipboard_target = target.to_string();
-        if clipboard_target != "UTF8_STRING" {
-            let message = format!("Clipboard target {} not implemented", clipboard_target);
-            return Err(err(&message));
-        }
+    fn get_target_contents(
+        &mut self,
+        _target: impl ToString,
+        _poll_duration: Duration,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
         return self.get_contents().map(|s| s.as_bytes().to_vec());
     }
 
     fn wait_for_target_contents(
         &mut self,
         target: impl ToString,
+        poll_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
         let target = target.to_string();
         loop {
-            match self.get_target_contents(&target) {
+            match self.get_target_contents(&target, poll_duration) {
                 Ok(data) if !data.is_empty() => return Ok(data),
                 Ok(_) => {
-                    sleep(Duration::from_secs(1));
-                    continue
-                },
+                    sleep(poll_duration);
+                    continue;
+                }
                 Err(e) => return Err(e),
             }
         }
     }
 
-    //@TODO implement os specific flags
     fn set_target_contents(
         &mut self,
-        target: impl ToString,
+        _target: impl ToString,
         data: &[u8],
     ) -> Result<(), Box<dyn Error>> {
-        let clipboard_target = target.to_string();
-        if clipboard_target != "UTF8_STRING" {
-            let message = format!("Clipboard target {} not implemented", clipboard_target);
-            return Err(err(&message));
-        }
         self.set_contents(String::from_utf8(data.to_vec())?)
     }
 
@@ -81,8 +74,4 @@ pub trait ClipboardProvider: Sized {
         }
         Ok(())
     }
-}
-
-fn err(s: &str) -> Box<dyn Error> {
-    Box::<dyn Error + Send + Sync>::from(s)
 }

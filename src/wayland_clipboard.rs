@@ -16,9 +16,14 @@ limitations under the License.
 
 use crate::common::*;
 use core::error::Error;
-use std::io::{self, Read};
+use std::{
+    collections::{HashMap, HashSet},
+    io::Read,
+    thread::sleep,
+    time::Duration,
+};
 use wl_clipboard_rs::{
-    copy::{self, Options, ServeRequests},
+    copy::{self, MimeSource, Options, ServeRequests},
     paste, utils,
 };
 
@@ -82,21 +87,37 @@ impl ClipboardProvider for WaylandClipboardContext {
     /// clipboard must indicate a text MIME type and the contained text
     /// must be valid UTF-8.
     fn get_contents(&mut self) -> Result<String, Box<dyn Error>> {
+        let data = self.get_target_contents("UTF8_STRING", Duration::from_millis(500))?;
+        Ok(String::from_utf8(data)?)
+    }
+
+    fn get_target_contents(
+        &mut self,
+        target: impl ToString,
+        _pool_duration: Duration,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
+        let mut buf = Vec::new();
+        let target = target.to_string();
+        let target = match target.as_str() {
+            "UTF8_STRING" | "TEXT" => paste::MimeType::Text,
+            e => paste::MimeType::Specific(e),
+        };
         if self.supports_primary_selection {
             match paste::get_contents(
                 paste::ClipboardType::Primary,
                 paste::Seat::Unspecified,
-                paste::MimeType::Text,
+                target,
             ) {
                 Ok((mut reader, _)) => {
                     // this looks weird, but rustc won't let me do it
                     // the natural way
-                    return Ok(read_into_string(&mut reader).map_err(Box::new)?);
+                    reader.read_to_end(&mut buf).map_err(Box::new)?;
+                    return Ok(buf);
                 }
                 Err(e) => match e {
                     paste::Error::NoSeats
                     | paste::Error::ClipboardEmpty
-                    | paste::Error::NoMimeType => return Ok("".to_string()),
+                    | paste::Error::NoMimeType => return Ok(Vec::new()),
                     _ => (),
                 },
             }
@@ -105,16 +126,17 @@ impl ClipboardProvider for WaylandClipboardContext {
         let mut reader = match paste::get_contents(
             paste::ClipboardType::Regular,
             paste::Seat::Unspecified,
-            paste::MimeType::Text,
+            target,
         ) {
             Ok((reader, _)) => reader,
             Err(
                 paste::Error::NoSeats | paste::Error::ClipboardEmpty | paste::Error::NoMimeType,
-            ) => return Ok("".to_string()),
+            ) => return Ok(Vec::new()),
             Err(e) => return Err(e.into()),
         };
 
-        Ok(read_into_string(&mut reader).map_err(Box::new)?)
+        reader.read_to_end(&mut buf).map_err(Box::new)?;
+        Ok(buf)
     }
 
     /// Copies to the Wayland clipboard.
@@ -124,6 +146,19 @@ impl ClipboardProvider for WaylandClipboardContext {
     /// primary selection and the regular clipboard. Otherwise, only
     /// the regular clipboard will be pasted to.
     fn set_contents(&mut self, data: String) -> Result<(), Box<dyn Error>> {
+        self.set_target_contents("UTF8_STRING", data.as_bytes())
+    }
+
+    fn set_target_contents(
+        &mut self,
+        target: impl ToString,
+        data: &[u8],
+    ) -> Result<(), Box<dyn Error>> {
+        let target = target.to_string();
+        let target = match target.as_str() {
+            "UTF8_STRING" | "TEXT" => copy::MimeType::Text,
+            _ => copy::MimeType::Specific(target),
+        };
         let mut options = Options::new();
 
         options
@@ -139,31 +174,99 @@ impl ClipboardProvider for WaylandClipboardContext {
         }
 
         options
-            .copy(
-                copy::Source::Bytes(data.into_bytes().into()),
-                copy::MimeType::Text,
-            )
+            .copy(copy::Source::Bytes(data.into()), target)
             .map_err(Into::into)
     }
 
-    // fn clear(&mut self) -> Result<()> {
-    //     if self.supports_primary_selection {
-    //         clear(copy::ClipboardType::Both, copy::Seat::All).map_err(Into::into)
-    //     } else {
-    //         clear(copy::ClipboardType::Regular, copy::Seat::All).map_err(Into::into)
-    //     }
-    // }
-}
+    fn wait_for_target_contents(
+        &mut self,
+        target: impl ToString,
+        pool_duration: Duration,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
+        let target = target.to_string();
+        let clipboard = if self.supports_primary_selection {
+            paste::ClipboardType::Primary
+        } else {
+            paste::ClipboardType::Regular
+        };
+        let mime_types = || match paste::get_mime_types(clipboard, paste::Seat::Unspecified) {
+            Ok(t) => Ok(t),
+            Err(
+                paste::Error::NoSeats | paste::Error::ClipboardEmpty | paste::Error::NoMimeType,
+            ) => Ok(HashSet::new()),
+            Err(e) => Err(e),
+        };
+        let initial_mime_types = mime_types()?;
+        let mut initial = true;
+        loop {
+            let current_mime_types = if initial {
+                initial = false;
+                initial_mime_types.clone()
+            } else {
+                mime_types()?
+            };
+            if current_mime_types.contains(&target) {
+                match self.get_target_contents(&target, pool_duration) {
+                    Ok(data) if !data.is_empty() => return Ok(data),
+                    Ok(_) => {
+                        if initial_mime_types != current_mime_types {
+                            return Ok(Vec::new());
+                        }
+                        sleep(pool_duration);
+                        continue;
+                    }
+                    Err(e) => return Err(e),
+                }
+            } else {
+                if initial_mime_types != current_mime_types {
+                    return Ok(Vec::new());
+                }
+                sleep(pool_duration);
+                continue;
+            }
+        }
+    }
 
-fn read_into_string<R: Read>(reader: &mut R) -> io::Result<String> {
-    let mut contents = String::new();
-    reader.read_to_string(&mut contents)?;
+    fn set_multiple_targets(
+        &mut self,
+        targets: HashMap<impl ToString, &[u8]>,
+    ) -> Result<(), Box<dyn Error>> {
+        let targets = targets
+            .into_iter()
+            .map(|(k, v)| {
+                let target = k.to_string();
+                let mime_type = match target.as_str() {
+                    "UTF8_STRING" | "TEXT" => copy::MimeType::Text,
+                    _ => copy::MimeType::Specific(target),
+                };
+                MimeSource {
+                    source: copy::Source::Bytes(v.into()),
+                    mime_type,
+                }
+            })
+            .collect();
 
-    Ok(contents)
+        let mut options = Options::new();
+
+        options
+            .seat(copy::Seat::All)
+            .foreground(false)
+            .serve_requests(ServeRequests::Unlimited);
+
+        if self.supports_primary_selection {
+            options.clipboard(copy::ClipboardType::Both);
+        } else {
+            options.clipboard(copy::ClipboardType::Regular);
+        }
+
+        options.copy_multi(targets).map_err(Into::into)
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
 
     #[test]
@@ -181,6 +284,153 @@ mod tests {
                 .get_contents()
                 .expect("couldn't get contents of Wayland clipboard"),
             "foo bar baz"
+        );
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn test_set_target_contents() {
+        let pool_duration = Duration::from_secs(1);
+        let contents = b"hello test";
+        let mut context = WaylandClipboardContext::new().unwrap();
+        context.set_target_contents("jumbo", contents).unwrap();
+        let result = context.get_target_contents("jumbo", pool_duration).unwrap();
+        assert_eq!(contents.to_vec(), result);
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn test_set_multiple_target_contents() {
+        let pool_duration = Duration::from_secs(1);
+        let c1 = "yes plain".as_bytes();
+        let c2 = "yes html".as_bytes();
+        let c3 = "yes files".as_bytes();
+        let mut context = WaylandClipboardContext::new().unwrap();
+        let mut hash = HashMap::new();
+        hash.insert("jumbo", c1);
+        hash.insert("html", c2);
+        hash.insert("files", c3);
+
+        context.set_multiple_targets(hash).unwrap();
+
+        let result = context.get_target_contents("jumbo", pool_duration).unwrap();
+        assert_eq!(c1.to_vec(), result);
+
+        let result = context.get_target_contents("html", pool_duration).unwrap();
+        assert_eq!(c2.to_vec(), result);
+
+        let result = context.get_target_contents("files", pool_duration).unwrap();
+        assert_eq!(c3.to_vec(), result);
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn test_wait_for_non_existing_target() {
+        let pool_duration = Duration::from_secs(1);
+        let mut context = WaylandClipboardContext::new().unwrap();
+        std::thread::spawn(move || {
+            context
+                .wait_for_target_contents("non-existing-target", pool_duration)
+                .unwrap();
+            panic!("should never happen")
+        });
+        std::thread::sleep(Duration::from_millis(1500));
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn test_wait_for_target_and_obtain_other_targets() {
+        let pool_duration = Duration::from_secs(1);
+        let c1 = "yes plain".as_bytes();
+        let c2 = "yes html".as_bytes();
+        let c3 = "yes files".as_bytes();
+        let mut context = WaylandClipboardContext::new().unwrap();
+        let mut hash = HashMap::new();
+        hash.insert("jumbo", c1);
+        hash.insert("html", c2);
+        hash.insert("files", c3);
+
+        let t1 = std::thread::spawn(move || {
+            let result = context
+                .wait_for_target_contents("jumbo", pool_duration)
+                .unwrap();
+            // assert_eq!(String::from_utf8_lossy(c1), get_target("jumbo"));
+            assert_eq!(c1.to_vec(), result);
+
+            let result = context.get_target_contents("html", pool_duration).unwrap();
+            assert_eq!(c2.to_vec(), result);
+            // assert_eq!(String::from_utf8_lossy(c2), get_target("html"));
+
+            let result = context.get_target_contents("files", pool_duration).unwrap();
+            assert_eq!(c3.to_vec(), result);
+            // assert_eq!(String::from_utf8_lossy(c3), get_target("files"));
+            std::thread::sleep(Duration::from_millis(500));
+        });
+
+        let mut context = WaylandClipboardContext::new().unwrap();
+
+        let t2 = std::thread::spawn(move || {
+            context.set_multiple_targets(hash).unwrap();
+            std::thread::sleep(Duration::from_millis(500));
+        });
+        t1.join().unwrap();
+        t2.join().unwrap();
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn test_wait_for_target_contents_while_changing_selection() {
+        let pool_duration = Duration::from_millis(50);
+        let c1 = "yes files1".as_bytes();
+        let c2 = "yes files2".as_bytes();
+
+        let mut context = WaylandClipboardContext::new().unwrap();
+
+        let t1 = std::thread::spawn(move || {
+            let result = context
+                .wait_for_target_contents("files1", pool_duration)
+                .unwrap();
+            assert_eq!(c1.to_vec(), result);
+            let result = context
+                .wait_for_target_contents("files2", pool_duration)
+                .unwrap();
+            assert_eq!(c2.to_vec(), result);
+            std::thread::sleep(Duration::from_millis(500));
+        });
+
+        let mut context = WaylandClipboardContext::new().unwrap();
+
+        let t2 = std::thread::spawn(move || {
+            let mut hash = HashMap::new();
+            hash.insert("files1", c1);
+            context.set_multiple_targets(hash.clone()).unwrap();
+            std::thread::sleep(Duration::from_millis(100));
+            let mut hash = HashMap::new();
+            hash.insert("files2", c2);
+            context.set_multiple_targets(hash).unwrap();
+            std::thread::sleep(Duration::from_millis(500));
+        });
+        t1.join().unwrap();
+        t2.join().unwrap();
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn test_get_target_contents_return_immediately() {
+        let pool_duration = Duration::from_secs(1);
+        let mut context = WaylandClipboardContext::new().unwrap();
+        context
+            .set_target_contents("initial-target", b"initial")
+            .unwrap();
+        assert!(context
+            .get_target_contents("second-target", pool_duration)
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            context
+                .get_target_contents("initial-target", pool_duration)
+                .unwrap(),
+            b"initial"
         );
     }
 }

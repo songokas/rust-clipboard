@@ -1,5 +1,6 @@
 use core::error::Error;
 use std::collections::HashMap;
+use std::time::Duration;
 
 use crate::common::*;
 use crate::wayland_clipboard::WaylandClipboardContext;
@@ -43,20 +44,27 @@ impl ClipboardProvider for LinuxClipboardContext {
         }
     }
 
-    fn get_target_contents(&mut self, target: impl ToString) -> Result<Vec<u8>, Box<dyn Error>> {
+    fn get_target_contents(
+        &mut self,
+        target: impl ToString,
+        poll_duration: Duration,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
         match &mut self.context {
-            LinuxContext::Wayland(context) => context.get_target_contents(target),
-            LinuxContext::X11(context) => context.get_target_contents(target),
+            LinuxContext::Wayland(context) => context.get_target_contents(target, poll_duration),
+            LinuxContext::X11(context) => context.get_target_contents(target, poll_duration),
         }
     }
 
     fn wait_for_target_contents(
         &mut self,
         target: impl ToString,
+        poll_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
         match &mut self.context {
-            LinuxContext::Wayland(context) => context.wait_for_target_contents(target),
-            LinuxContext::X11(context) => context.wait_for_target_contents(target),
+            LinuxContext::Wayland(context) => {
+                context.wait_for_target_contents(target, poll_duration)
+            }
+            LinuxContext::X11(context) => context.wait_for_target_contents(target, poll_duration),
         }
     }
 
@@ -80,11 +88,4 @@ impl ClipboardProvider for LinuxClipboardContext {
             LinuxContext::X11(context) => context.set_multiple_targets(targets),
         }
     }
-
-    // fn clear(&mut self) -> Result<()> {
-    //     match &mut self.context {
-    //         LinuxContext::Wayland(context) => context.clear(),
-    //         LinuxContext::X11(context) => context.clear(),
-    //     }
-    // }
 }

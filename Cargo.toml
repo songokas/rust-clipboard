@@ -9,7 +9,7 @@ keywords = ["clipboard"]
 edition = "2021"
 
 [target.'cfg(windows)'.dependencies]
-clipboard-win = { version = "5", features = ["std"] }
+clipboard-win = { version = "5", features = ["std", "monitor"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
