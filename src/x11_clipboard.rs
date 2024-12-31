@@ -26,6 +26,7 @@ use x11_clipboard::Clipboard as X11Clipboard;
 use crate::common::TargetMimeType;
 use crate::ClipboardProvider;
 
+const MIME_TEXT: &str = "UTF8_STRING";
 const MIME_URI: &str = "text/uri-list";
 const MIME_BITMAP: &str = "image/png";
 
@@ -186,13 +187,38 @@ mod x11clipboard {
 
     #[serial_test::serial]
     #[test]
-    fn test_get_set_contents() {
+    fn test_set_get_contents() {
         let contents = "hello test";
         let mut context = ClipboardContext::new().unwrap();
         context.set_contents(contents.to_string()).unwrap();
         let result = context.get_contents().unwrap();
         assert_eq!(contents, result);
         assert_eq!(contents, get_target("UTF8_STRING"));
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn test_set_get_defined_targets() {
+        let pool_duration = Duration::from_secs(1);
+        let contents = b"hello test";
+        let data = [
+            (TargetMimeType::Text, MIME_TEXT),
+            (TargetMimeType::Files, MIME_URI),
+            (TargetMimeType::Bitmap, MIME_BITMAP),
+            (
+                TargetMimeType::Specific("x-clipsync".to_string()),
+                "x-clipsync",
+            ),
+        ];
+        for (target, expected) in data {
+            let mut context = ClipboardContext::new().unwrap();
+            context
+                .set_target_contents(target.clone(), contents.to_vec())
+                .unwrap();
+            let result = context.get_target_contents(target, pool_duration).unwrap();
+            assert_eq!(contents.as_slice(), result);
+            assert_eq!(contents, get_target(expected).as_bytes());
+        }
     }
 
     #[serial_test::serial]
