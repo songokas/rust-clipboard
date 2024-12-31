@@ -41,22 +41,28 @@ impl ClipboardProvider for WindowsClipboardContext {
 
     fn get_target_contents(
         &mut self,
-        target: impl ToString,
+        target: TargetMimeType,
         _poll_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
-        let format_id: u32 = target.to_string().parse()?;
-        Ok(get_clipboard(RawData(format_id))?)
+        Ok(match target {
+            TargetMimeType::Text => get_clipboard(Unicode)?,
+            TargetMimeType::Bitmap => get_clipboard(Bitmap)?,
+            TargetMimeType::Files => get_clipboard(Files)?,
+            TargetMimeType::Specific(s) => {
+                let format_id: u32 = target.to_string().parse()?;
+                get_clipboard(RawData(format_id))?
+            }
+        })
     }
 
     fn wait_for_target_contents(
         &mut self,
-        target: impl ToString,
+        target: TargetMimeType,
         poll_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
         let mut event_received = false;
-        let target = target.to_string();
         loop {
-            match self.get_target_contents(&target, poll_duration) {
+            match self.get_target_contents(target.clone(), poll_duration) {
                 Ok(data) if !data.is_empty() => return Ok(data),
                 Ok(_) => {
                     if event_received {
@@ -64,10 +70,9 @@ impl ClipboardProvider for WindowsClipboardContext {
                     }
                     let _clip = Clipboard::new_attempts(10).expect("Open clipboard");
                     let mut monitor = Monitor::new().expect("create monitor");
-                    let Ok(_) = monitor.try_recv() else {
+                    let Ok(true) = monitor.recv() else {
                         return Ok(Vec::new());
                     };
-                    monitor.shutdown_channel();
                     event_received = true;
                     continue;
                 }
@@ -78,16 +83,24 @@ impl ClipboardProvider for WindowsClipboardContext {
 
     fn set_target_contents(
         &mut self,
-        target: impl ToString,
-        data: &[u8],
+        target: TargetMimeType,
+        data: Vec<u8>,
     ) -> Result<(), Box<dyn Error>> {
-        let format_id: u32 = target.to_string().parse()?;
-        Ok(set_clipboard(RawData(format_id), data)?)
+        Ok(match target {
+            TargetMimeType::Text => set_clipboard(Unicode, data)?,
+            TargetMimeType::Bitmap => set_clipboard(Bitmap, data)?,
+            TargetMimeType::Files => set_clipboard(Files, data)?,
+            TargetMimeType::Specific(s) => {
+                let format_id: u32 = s.parse()?;
+                set_clipboard(RawData(format_id), data)?
+            }
+        })
     }
 
+    /// only 1 target is supported
     fn set_multiple_targets(
         &mut self,
-        targets: HashMap<impl ToString, &[u8]>,
+        targets: impl IntoIterator<Item = (TargetMimeType, Vec<u8>)>,
     ) -> Result<(), Box<dyn Error>> {
         if let Some((key, value)) = targets.into_iter().next() {
             return self.set_target_contents(key, value);

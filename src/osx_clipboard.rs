@@ -74,8 +74,37 @@ impl ClipboardProvider for MacOSClipboardContext {
         }
     }
 
-    fn clear(&mut self) -> Result<()> {
-        let _: usize = unsafe { msg_send![self.pasteboard, clearContents] };
+    fn get_target_contents(
+        &mut self,
+        _target: crate::common::TargetMimeType,
+        _poll_duration: std::time::Duration,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
+        self.get_contents().map(|s| s.into_bytes())
+    }
+
+    fn wait_for_target_contents(
+        &mut self,
+        target: crate::common::TargetMimeType,
+        poll_duration: std::time::Duration,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
+        self.get_target_contents(target, poll_duration)
+    }
+
+    fn set_target_contents(
+        &mut self,
+        _target: crate::common::TargetMimeType,
+        data: Vec<u8>,
+    ) -> Result<(), Box<dyn Error>> {
+        self.set_contents(String::from_utf8(data)?)
+    }
+
+    fn set_multiple_targets(
+        &mut self,
+        targets: impl IntoIterator<Item = (crate::common::TargetMimeType, Vec<u8>)>,
+    ) -> Result<(), Box<dyn Error>> {
+        if let Some((key, value)) = targets.into_iter().next() {
+            return self.set_target_contents(key, value);
+        }
         Ok(())
     }
 }

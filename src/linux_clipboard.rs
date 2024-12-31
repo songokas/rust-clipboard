@@ -1,5 +1,4 @@
 use core::error::Error;
-use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::common::*;
@@ -46,7 +45,7 @@ impl ClipboardProvider for LinuxClipboardContext {
 
     fn get_target_contents(
         &mut self,
-        target: impl ToString,
+        target: TargetMimeType,
         poll_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
         match &mut self.context {
@@ -57,7 +56,7 @@ impl ClipboardProvider for LinuxClipboardContext {
 
     fn wait_for_target_contents(
         &mut self,
-        target: impl ToString,
+        target: TargetMimeType,
         poll_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
         match &mut self.context {
@@ -70,8 +69,8 @@ impl ClipboardProvider for LinuxClipboardContext {
 
     fn set_target_contents(
         &mut self,
-        target: impl ToString,
-        data: &[u8],
+        target: TargetMimeType,
+        data: Vec<u8>,
     ) -> Result<(), Box<dyn Error>> {
         match &mut self.context {
             LinuxContext::Wayland(context) => context.set_target_contents(target, data),
@@ -81,7 +80,7 @@ impl ClipboardProvider for LinuxClipboardContext {
 
     fn set_multiple_targets(
         &mut self,
-        targets: HashMap<impl ToString, &[u8]>,
+        targets: impl IntoIterator<Item = (TargetMimeType, Vec<u8>)>,
     ) -> Result<(), Box<dyn Error>> {
         match &mut self.context {
             LinuxContext::Wayland(context) => context.set_multiple_targets(targets),

@@ -23,7 +23,11 @@ use x11_clipboard::Atom;
 use x11_clipboard::Atoms;
 use x11_clipboard::Clipboard as X11Clipboard;
 
+use crate::common::TargetMimeType;
 use crate::ClipboardProvider;
+
+const MIME_URI: &str = "text/uri-list";
+const MIME_BITMAP: &str = "image/png";
 
 pub trait Selection {
     fn atom(atoms: &Atoms) -> Atom;
@@ -48,6 +52,20 @@ impl Selection for Clipboard {
 pub struct X11ClipboardContext<S = Clipboard>(X11Clipboard, PhantomData<S>)
 where
     S: Selection;
+
+impl<S> X11ClipboardContext<S>
+where
+    S: Selection,
+{
+    fn get_target(&self, target: TargetMimeType) -> Result<Atom, x11_clipboard::error::Error> {
+        match target {
+            TargetMimeType::Text => Ok(self.0.getter.atoms.utf8_string),
+            TargetMimeType::Bitmap => self.0.getter.get_atom(MIME_BITMAP, false),
+            TargetMimeType::Files => self.0.getter.get_atom(MIME_URI, false),
+            TargetMimeType::Specific(s) => self.0.getter.get_atom(&s, false),
+        }
+    }
+}
 
 impl<S> ClipboardProvider for X11ClipboardContext<S>
 where
@@ -76,10 +94,16 @@ where
 
     fn get_target_contents(
         &mut self,
-        target_type: impl ToString,
+        target: TargetMimeType,
         pool_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
-        let target = self.0.getter.get_atom(&target_type.to_string(), true)?;
+        let target = match target {
+            TargetMimeType::Text => self.0.getter.atoms.utf8_string,
+            TargetMimeType::Bitmap => self.0.getter.get_atom(MIME_BITMAP, true)?,
+            TargetMimeType::Files => self.0.getter.get_atom(MIME_URI, true)?,
+            TargetMimeType::Specific(s) => self.0.getter.get_atom(&s, true)?,
+        };
+
         if target == 0 {
             return Ok(Vec::new());
         }
@@ -97,10 +121,11 @@ where
 
     fn wait_for_target_contents(
         &mut self,
-        target_type: impl ToString,
+        target: TargetMimeType,
         _pool_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
-        let target = self.0.getter.get_atom(&target_type.to_string(), false)?;
+        // rely on load wait to return once clipboard is modified
+        let target = self.get_target(target)?;
         match self.0.load_wait(
             S::atom(&self.0.getter.atoms),
             target,
@@ -114,20 +139,20 @@ where
 
     fn set_target_contents(
         &mut self,
-        target_type: impl ToString,
-        data: &[u8],
+        target: TargetMimeType,
+        data: Vec<u8>,
     ) -> Result<(), Box<dyn Error>> {
-        let target = self.0.setter.get_atom(&target_type.to_string(), false)?;
+        let target = self.get_target(target)?;
         Ok(self.0.store(S::atom(&self.0.setter.atoms), target, data)?)
     }
 
     fn set_multiple_targets(
         &mut self,
-        targets: HashMap<impl ToString, &[u8]>,
+        targets: impl IntoIterator<Item = (TargetMimeType, Vec<u8>)>,
     ) -> Result<(), Box<dyn Error>> {
         let hash: Result<HashMap<_, _>, Box<dyn Error>> = targets
             .into_iter()
-            .map(|(key, value)| Ok((self.0.setter.get_atom(&key.to_string(), false)?, value)))
+            .map(|(target, value)| Ok((self.get_target(target)?, value)))
             .collect();
         Ok(self
             .0
@@ -161,11 +186,12 @@ mod x11clipboard {
 
     #[serial_test::serial]
     #[test]
-    fn test_set_contents() {
+    fn test_get_set_contents() {
         let contents = "hello test";
         let mut context = ClipboardContext::new().unwrap();
-        context.set_contents(contents.to_owned()).unwrap();
-
+        context.set_contents(contents.to_string()).unwrap();
+        let result = context.get_contents().unwrap();
+        assert_eq!(contents, result);
         assert_eq!(contents, get_target("UTF8_STRING"));
     }
 

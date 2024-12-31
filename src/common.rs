@@ -15,63 +15,50 @@ limitations under the License.
 */
 
 use core::time::Duration;
-use std::collections::HashMap;
 use std::error::Error;
-use std::thread::sleep;
+
+#[derive(Debug, Clone)]
+pub enum TargetMimeType {
+    Text,
+    Bitmap,
+    Files,
+    Specific(String),
+}
 
 /// Trait for clipboard access
 pub trait ClipboardProvider: Sized {
     /// Create a context with which to access the clipboard
-    // TODO: consider replacing Box<dyn Error> with an associated type?
     fn new() -> Result<Self, Box<dyn Error>>;
     /// Method to get the clipboard contents as a String
     fn get_contents(&mut self) -> Result<String, Box<dyn Error>>;
     /// Method to set the clipboard contents as a String
     fn set_contents(&mut self, contents: String) -> Result<(), Box<dyn Error>>;
-    // TODO: come up with some platform-agnostic API for richer types
-    // than just strings (c.f. issue #31)
 
+    /// returns target contents
     fn get_target_contents(
         &mut self,
-        _target: impl ToString,
-        _poll_duration: Duration,
-    ) -> Result<Vec<u8>, Box<dyn Error>> {
-        return self.get_contents().map(|s| s.as_bytes().to_vec());
-    }
+        target: TargetMimeType,
+        poll_duration: Duration,
+    ) -> Result<Vec<u8>, Box<dyn Error>>;
+    //     return self.get_contents().map(|s| s.as_bytes().to_vec());
+    // }
 
+    /// wait until target is available and not empty
+    /// returns if clipboard was updated even if the target requested is not available
     fn wait_for_target_contents(
         &mut self,
-        target: impl ToString,
+        target: TargetMimeType,
         poll_duration: Duration,
-    ) -> Result<Vec<u8>, Box<dyn Error>> {
-        let target = target.to_string();
-        loop {
-            match self.get_target_contents(&target, poll_duration) {
-                Ok(data) if !data.is_empty() => return Ok(data),
-                Ok(_) => {
-                    sleep(poll_duration);
-                    continue;
-                }
-                Err(e) => return Err(e),
-            }
-        }
-    }
+    ) -> Result<Vec<u8>, Box<dyn Error>>;
 
     fn set_target_contents(
         &mut self,
-        _target: impl ToString,
-        data: &[u8],
-    ) -> Result<(), Box<dyn Error>> {
-        self.set_contents(String::from_utf8(data.to_vec())?)
-    }
+        target: TargetMimeType,
+        data: Vec<u8>,
+    ) -> Result<(), Box<dyn Error>>;
 
     fn set_multiple_targets(
         &mut self,
-        targets: HashMap<impl ToString, &[u8]>,
-    ) -> Result<(), Box<dyn Error>> {
-        if let Some((key, value)) = targets.into_iter().next() {
-            return self.set_target_contents(key, value);
-        }
-        Ok(())
-    }
+        targets: impl IntoIterator<Item = (TargetMimeType, Vec<u8>)>,
+    ) -> Result<(), Box<dyn Error>>;
 }

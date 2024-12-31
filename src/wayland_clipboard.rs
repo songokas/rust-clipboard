@@ -16,16 +16,14 @@ limitations under the License.
 
 use crate::common::*;
 use core::error::Error;
-use std::{
-    collections::{HashMap, HashSet},
-    io::Read,
-    thread::sleep,
-    time::Duration,
-};
+use std::{collections::HashSet, io::Read, thread::sleep, time::Duration};
 use wl_clipboard_rs::{
     copy::{self, MimeSource, Options, ServeRequests},
     paste, utils,
 };
+
+const MIME_URI: &str = "text/uri-list";
+const MIME_BITMAP: &str = "image/png";
 
 /// Interface to the clipboard for Wayland windowing systems.
 ///
@@ -87,26 +85,27 @@ impl ClipboardProvider for WaylandClipboardContext {
     /// clipboard must indicate a text MIME type and the contained text
     /// must be valid UTF-8.
     fn get_contents(&mut self) -> Result<String, Box<dyn Error>> {
-        let data = self.get_target_contents("UTF8_STRING", Duration::from_millis(500))?;
+        let data = self.get_target_contents(TargetMimeType::Text, Duration::from_millis(500))?;
         Ok(String::from_utf8(data)?)
     }
 
     fn get_target_contents(
         &mut self,
-        target: impl ToString,
+        target: TargetMimeType,
         _pool_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
         let mut buf = Vec::new();
-        let target = target.to_string();
-        let target = match target.as_str() {
-            "UTF8_STRING" | "TEXT" => paste::MimeType::Text,
-            e => paste::MimeType::Specific(e),
+        let mime_type = match &target {
+            TargetMimeType::Text => paste::MimeType::Text,
+            TargetMimeType::Bitmap => paste::MimeType::Specific(MIME_BITMAP),
+            TargetMimeType::Files => paste::MimeType::Specific(MIME_URI),
+            TargetMimeType::Specific(s) => paste::MimeType::Specific(s),
         };
         if self.supports_primary_selection {
             match paste::get_contents(
                 paste::ClipboardType::Primary,
                 paste::Seat::Unspecified,
-                target,
+                mime_type,
             ) {
                 Ok((mut reader, _)) => {
                     // this looks weird, but rustc won't let me do it
@@ -126,7 +125,7 @@ impl ClipboardProvider for WaylandClipboardContext {
         let mut reader = match paste::get_contents(
             paste::ClipboardType::Regular,
             paste::Seat::Unspecified,
-            target,
+            mime_type,
         ) {
             Ok((reader, _)) => reader,
             Err(
@@ -146,19 +145,15 @@ impl ClipboardProvider for WaylandClipboardContext {
     /// primary selection and the regular clipboard. Otherwise, only
     /// the regular clipboard will be pasted to.
     fn set_contents(&mut self, data: String) -> Result<(), Box<dyn Error>> {
-        self.set_target_contents("UTF8_STRING", data.as_bytes())
+        self.set_target_contents(TargetMimeType::Text, data.into_bytes())
     }
 
     fn set_target_contents(
         &mut self,
-        target: impl ToString,
-        data: &[u8],
+        target: TargetMimeType,
+        data: Vec<u8>,
     ) -> Result<(), Box<dyn Error>> {
-        let target = target.to_string();
-        let target = match target.as_str() {
-            "UTF8_STRING" | "TEXT" => copy::MimeType::Text,
-            _ => copy::MimeType::Specific(target),
-        };
+        let target = get_target(target);
         let mut options = Options::new();
 
         options
@@ -180,10 +175,9 @@ impl ClipboardProvider for WaylandClipboardContext {
 
     fn wait_for_target_contents(
         &mut self,
-        target: impl ToString,
+        target: TargetMimeType,
         pool_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
-        let target = target.to_string();
         let clipboard = if self.supports_primary_selection {
             paste::ClipboardType::Primary
         } else {
@@ -205,8 +199,8 @@ impl ClipboardProvider for WaylandClipboardContext {
             } else {
                 mime_types()?
             };
-            if current_mime_types.contains(&target) {
-                match self.get_target_contents(&target, pool_duration) {
+            if matches_target(&current_mime_types, &target) {
+                match self.get_target_contents(target.clone(), pool_duration) {
                     Ok(data) if !data.is_empty() => return Ok(data),
                     Ok(_) => {
                         if initial_mime_types != current_mime_types {
@@ -229,16 +223,12 @@ impl ClipboardProvider for WaylandClipboardContext {
 
     fn set_multiple_targets(
         &mut self,
-        targets: HashMap<impl ToString, &[u8]>,
+        targets: impl IntoIterator<Item = (TargetMimeType, Vec<u8>)>,
     ) -> Result<(), Box<dyn Error>> {
         let targets = targets
             .into_iter()
             .map(|(k, v)| {
-                let target = k.to_string();
-                let mime_type = match target.as_str() {
-                    "UTF8_STRING" | "TEXT" => copy::MimeType::Text,
-                    _ => copy::MimeType::Specific(target),
-                };
+                let mime_type = get_target(k);
                 MimeSource {
                     source: copy::Source::Bytes(v.into()),
                     mime_type,
@@ -260,6 +250,24 @@ impl ClipboardProvider for WaylandClipboardContext {
         }
 
         options.copy_multi(targets).map_err(Into::into)
+    }
+}
+
+fn get_target(target: TargetMimeType) -> copy::MimeType {
+    match target {
+        TargetMimeType::Text => copy::MimeType::Text,
+        TargetMimeType::Bitmap => copy::MimeType::Specific(MIME_BITMAP.to_string()),
+        TargetMimeType::Files => copy::MimeType::Specific(MIME_URI.to_string()),
+        TargetMimeType::Specific(s) => copy::MimeType::Specific(s),
+    }
+}
+
+fn matches_target(types: &HashSet<String>, target: &TargetMimeType) -> bool {
+    match target {
+        TargetMimeType::Text => types.iter().any(|t| t.contains("text")),
+        TargetMimeType::Bitmap => types.iter().any(|t| t.contains("image")),
+        TargetMimeType::Files => types.iter().any(|t| t.contains(MIME_URI)),
+        TargetMimeType::Specific(s) => types.iter().any(|t| t.contains(s)),
     }
 }
 
