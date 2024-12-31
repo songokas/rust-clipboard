@@ -14,15 +14,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+use clipboard_win::formats::Bitmap;
+use clipboard_win::formats::FileList;
 use clipboard_win::formats::RawData;
+use clipboard_win::formats::Unicode;
 use clipboard_win::get_clipboard;
 use clipboard_win::set_clipboard;
 use clipboard_win::Clipboard;
 use clipboard_win::Monitor;
+use clipboard_win::Setter;
 use clipboard_win::{get_clipboard_string, set_clipboard_string};
-use std::collections::HashMap;
 use std::time::Duration;
 
+use crate::common::TargetMimeType;
 use crate::ClipboardProvider;
 use std::error::Error;
 
@@ -45,11 +49,12 @@ impl ClipboardProvider for WindowsClipboardContext {
         _poll_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
         Ok(match target {
-            TargetMimeType::Text => get_clipboard(Unicode)?,
+            TargetMimeType::Text => get_clipboard(Unicode).map(|s: String| s.into_bytes())?,
             TargetMimeType::Bitmap => get_clipboard(Bitmap)?,
-            TargetMimeType::Files => get_clipboard(Files)?,
+            TargetMimeType::Files => get_clipboard(FileList)
+                .map(|list: Vec<String>| list.into_iter().flat_map(|s| s.into_bytes()).collect())?,
             TargetMimeType::Specific(s) => {
-                let format_id: u32 = target.to_string().parse()?;
+                let format_id: u32 = s.parse()?;
                 get_clipboard(RawData(format_id))?
             }
         })
@@ -87,9 +92,40 @@ impl ClipboardProvider for WindowsClipboardContext {
         data: Vec<u8>,
     ) -> Result<(), Box<dyn Error>> {
         Ok(match target {
-            TargetMimeType::Text => set_clipboard(Unicode, data)?,
+            TargetMimeType::Text => self.set_contents(String::from_utf8(data)?)?,
             TargetMimeType::Bitmap => set_clipboard(Bitmap, data)?,
-            TargetMimeType::Files => set_clipboard(Files, data)?,
+            TargetMimeType::Files => {
+                let mut files: Vec<String> =
+                    String::from_utf8(data)?.lines().map(|s| s.into()).collect();
+                // TODO
+                match files.len() {
+                    1 => {
+                        let files: [String; 1] = files.try_into().unwrap();
+                        FileList.write_clipboard(&files)?
+                    }
+                    2 => {
+                        let files: [String; 2] = files.try_into().unwrap();
+                        FileList.write_clipboard(&files)?
+                    }
+                    3 => {
+                        let files: [String; 3] = files.try_into().unwrap();
+                        FileList.write_clipboard(&files)?
+                    }
+                    4 => {
+                        let files: [String; 4] = files.try_into().unwrap();
+                        FileList.write_clipboard(&files)?
+                    }
+                    5 => {
+                        let files: [String; 5] = files.try_into().unwrap();
+                        FileList.write_clipboard(&files)?
+                    }
+                    _ => {
+                        files.truncate(6);
+                        let files: [String; 6] = files.try_into().unwrap();
+                        FileList.write_clipboard(&files)?
+                    }
+                }
+            }
             TargetMimeType::Specific(s) => {
                 let format_id: u32 = s.parse()?;
                 set_clipboard(RawData(format_id), data)?

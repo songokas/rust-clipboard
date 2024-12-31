@@ -17,12 +17,21 @@ limitations under the License.
 use core::time::Duration;
 use std::error::Error;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TargetMimeType {
     Text,
     Bitmap,
     Files,
+    // linux: any string
+    // clipboard formats for windows:
+    // https://docs.rs/clipboard-win/latest/clipboard_win/formats/index.html#constants
     Specific(String),
+}
+
+impl From<&str> for TargetMimeType {
+    fn from(value: &str) -> Self {
+        TargetMimeType::Specific(value.into())
+    }
 }
 
 /// Trait for clipboard access
@@ -40,8 +49,6 @@ pub trait ClipboardProvider: Sized {
         target: TargetMimeType,
         poll_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>>;
-    //     return self.get_contents().map(|s| s.as_bytes().to_vec());
-    // }
 
     /// wait until target is available and not empty
     /// returns if clipboard was updated even if the target requested is not available

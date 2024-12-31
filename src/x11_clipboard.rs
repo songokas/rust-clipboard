@@ -201,8 +201,12 @@ mod x11clipboard {
         let pool_duration = Duration::from_secs(1);
         let contents = b"hello test";
         let mut context = ClipboardContext::new().unwrap();
-        context.set_target_contents("jumbo", contents).unwrap();
-        let result = context.get_target_contents("jumbo", pool_duration).unwrap();
+        context
+            .set_target_contents("jumbo".into(), contents.to_vec())
+            .unwrap();
+        let result = context
+            .get_target_contents("jumbo".into(), pool_duration)
+            .unwrap();
         assert_eq!(contents.to_vec(), result);
         assert_eq!(String::from_utf8_lossy(contents), get_target("jumbo"));
     }
@@ -214,9 +218,11 @@ mod x11clipboard {
         let contents = std::iter::repeat("X").take(100000).collect::<String>();
         let mut context = ClipboardContext::new().unwrap();
         context
-            .set_target_contents("large", contents.as_bytes())
+            .set_target_contents("large".into(), contents.clone().into_bytes())
             .unwrap();
-        let result = context.get_target_contents("large", pool_duration).unwrap();
+        let result = context
+            .get_target_contents("large".into(), pool_duration)
+            .unwrap();
         assert_eq!(contents.as_bytes().to_vec(), result);
         assert_eq!(contents, get_target("large"));
     }
@@ -230,21 +236,27 @@ mod x11clipboard {
         let c3 = "yes files".as_bytes();
         let mut context = ClipboardContext::new().unwrap();
         let mut hash = HashMap::new();
-        hash.insert("jumbo", c1);
-        hash.insert("html", c2);
-        hash.insert("files", c3);
+        hash.insert("jumbo".into(), c1.to_vec());
+        hash.insert("html".into(), c2.to_vec());
+        hash.insert("files".into(), c3.to_vec());
 
         context.set_multiple_targets(hash).unwrap();
 
-        let result = context.get_target_contents("jumbo", pool_duration).unwrap();
+        let result = context
+            .get_target_contents("jumbo".into(), pool_duration)
+            .unwrap();
         assert_eq!(String::from_utf8_lossy(c1), get_target("jumbo"));
         assert_eq!(c1.to_vec(), result);
 
-        let result = context.get_target_contents("html", pool_duration).unwrap();
+        let result = context
+            .get_target_contents("html".into(), pool_duration)
+            .unwrap();
         assert_eq!(c2.to_vec(), result);
-        assert_eq!(String::from_utf8_lossy(c2), get_target("html"));
+        assert_eq!(String::from_utf8_lossy(c2), get_target("html".into()));
 
-        let result = context.get_target_contents("files", pool_duration).unwrap();
+        let result = context
+            .get_target_contents("files".into(), pool_duration)
+            .unwrap();
         assert_eq!(c3.to_vec(), result);
         assert_eq!(String::from_utf8_lossy(c3), get_target("files"));
     }
@@ -258,9 +270,9 @@ mod x11clipboard {
         let c3 = "yes files".as_bytes();
         let mut context = ClipboardContext::new().unwrap();
         let mut hash = HashMap::new();
-        hash.insert("jumbo", c1);
-        hash.insert("html", c2);
-        hash.insert("files", c3);
+        hash.insert("jumbo".into(), c1.to_vec());
+        hash.insert("html".into(), c2.to_vec());
+        hash.insert("files".into(), c3.to_vec());
 
         let t1 = std::thread::spawn(move || {
             context.set_multiple_targets(hash).unwrap();
@@ -270,15 +282,21 @@ mod x11clipboard {
         let mut context = ClipboardContext::new().unwrap();
 
         let t2 = std::thread::spawn(move || {
-            let result = context.get_target_contents("jumbo", pool_duration).unwrap();
+            let result = context
+                .get_target_contents("jumbo".into(), pool_duration)
+                .unwrap();
             assert_eq!(String::from_utf8_lossy(c1), get_target("jumbo"));
             assert_eq!(c1.to_vec(), result);
 
-            let result = context.get_target_contents("html", pool_duration).unwrap();
+            let result = context
+                .get_target_contents("html".into(), pool_duration)
+                .unwrap();
             assert_eq!(c2.to_vec(), result);
             assert_eq!(String::from_utf8_lossy(c2), get_target("html"));
 
-            let result = context.get_target_contents("files", pool_duration).unwrap();
+            let result = context
+                .get_target_contents("files".into(), pool_duration)
+                .unwrap();
             assert_eq!(c3.to_vec(), result);
             assert_eq!(String::from_utf8_lossy(c3), get_target("files"));
             std::thread::sleep(Duration::from_millis(500));
@@ -291,27 +309,31 @@ mod x11clipboard {
     #[test]
     fn test_wait_for_target_and_obtain_other_targets() {
         let pool_duration = Duration::from_secs(1);
-        let c1 = "yes plain".as_bytes();
-        let c2 = "yes html".as_bytes();
-        let c3 = "yes files".as_bytes();
+        let c1 = b"yes plain";
+        let c2 = b"yes html";
+        let c3 = b"yes files";
         let mut context = ClipboardContext::new().unwrap();
         let mut hash = HashMap::new();
-        hash.insert("jumbo", c1);
-        hash.insert("html", c2);
-        hash.insert("files", c3);
+        hash.insert("jumbo".into(), c1.to_vec());
+        hash.insert("html".into(), c2.to_vec());
+        hash.insert("files".into(), c3.to_vec());
 
         let t1 = std::thread::spawn(move || {
             let result = context
-                .wait_for_target_contents("jumbo", pool_duration)
+                .wait_for_target_contents("jumbo".into(), pool_duration)
                 .unwrap();
             assert_eq!(String::from_utf8_lossy(c1), get_target("jumbo"));
             assert_eq!(c1.to_vec(), result);
 
-            let result = context.get_target_contents("html", pool_duration).unwrap();
+            let result = context
+                .get_target_contents("html".into(), pool_duration)
+                .unwrap();
             assert_eq!(c2.to_vec(), result);
             assert_eq!(String::from_utf8_lossy(c2), get_target("html"));
 
-            let result = context.get_target_contents("files", pool_duration).unwrap();
+            let result = context
+                .get_target_contents("files".into(), pool_duration)
+                .unwrap();
             assert_eq!(c3.to_vec(), result);
             assert_eq!(String::from_utf8_lossy(c3), get_target("files"));
             std::thread::sleep(Duration::from_millis(500));
@@ -331,19 +353,19 @@ mod x11clipboard {
     #[test]
     fn test_wait_for_target_contents_while_changing_selection() {
         let pool_duration = Duration::from_millis(50);
-        let c1 = "yes files1".as_bytes();
-        let c2 = "yes files2".as_bytes();
+        let c1 = b"yes files1";
+        let c2 = b"yes files2";
 
         let mut context = ClipboardContext::new().unwrap();
 
         let t1 = std::thread::spawn(move || {
             let result = context
-                .wait_for_target_contents("files1", pool_duration)
+                .wait_for_target_contents("files1".into(), pool_duration)
                 .unwrap();
             assert_eq!(c1.to_vec(), result);
             assert_eq!(String::from_utf8_lossy(c1), get_target("files1"));
             let result = context
-                .wait_for_target_contents("files2", pool_duration)
+                .wait_for_target_contents("files2".into(), pool_duration)
                 .unwrap();
             assert_eq!(c2.to_vec(), result);
             assert_eq!(String::from_utf8_lossy(c2), get_target("files2"));
@@ -354,11 +376,11 @@ mod x11clipboard {
 
         let t2 = std::thread::spawn(move || {
             let mut hash = HashMap::new();
-            hash.insert("files1", c1);
+            hash.insert("files1".into(), c1.to_vec());
             context.set_multiple_targets(hash.clone()).unwrap();
             std::thread::sleep(Duration::from_millis(100));
             let mut hash = HashMap::new();
-            hash.insert("files2", c2);
+            hash.insert("files2".into(), c2.to_vec());
             context.set_multiple_targets(hash).unwrap();
             std::thread::sleep(Duration::from_millis(500));
         });
@@ -373,7 +395,7 @@ mod x11clipboard {
         let mut context = ClipboardContext::new().unwrap();
         std::thread::spawn(move || {
             context
-                .wait_for_target_contents("non-existing-target", pool_duration)
+                .wait_for_target_contents("non-existing-target".into(), pool_duration)
                 .unwrap();
             panic!("should never happen")
         });
@@ -384,17 +406,17 @@ mod x11clipboard {
     #[test]
     fn test_wait_for_non_existing_target_contents_while_changing_selection() {
         let pool_duration = Duration::from_secs(1);
-        let c2 = "yes files2".as_bytes();
+        let c2 = b"yes files2";
 
         let mut context = ClipboardContext::new().unwrap();
 
         let _t1 = std::thread::spawn(move || {
             assert!(context
-                .wait_for_target_contents("files1", pool_duration)
+                .wait_for_target_contents("files1".into(), pool_duration)
                 .unwrap()
                 .is_empty());
             let result = context
-                .wait_for_target_contents("files2", pool_duration)
+                .wait_for_target_contents("files2".into(), pool_duration)
                 .unwrap();
             assert_eq!(c2.to_vec(), result);
             assert_eq!(String::from_utf8_lossy(c2), get_target("files2"));
@@ -406,7 +428,7 @@ mod x11clipboard {
 
         let t2 = std::thread::spawn(move || {
             let mut hash = HashMap::new();
-            hash.insert("files2", c2);
+            hash.insert("files2".into(), c2.to_vec());
             context.set_multiple_targets(hash.clone()).unwrap();
             std::thread::sleep(Duration::from_millis(500));
         });
@@ -422,16 +444,20 @@ mod x11clipboard {
 
         let mut context = ClipboardContext::new().unwrap();
         context
-            .set_target_contents("initial-target", third_target_data)
+            .set_target_contents("initial-target".into(), third_target_data.to_vec())
             .unwrap();
 
         let t1 = std::thread::spawn(move || {
-            let result = context.get_target_contents(target, pool_duration).unwrap();
+            let result = context
+                .get_target_contents(target.into(), pool_duration)
+                .unwrap();
             assert!(result.is_empty());
 
             std::thread::sleep(Duration::from_millis(200));
 
-            let result = context.get_target_contents(target, pool_duration).unwrap();
+            let result = context
+                .get_target_contents(target.into(), pool_duration)
+                .unwrap();
             assert_eq!(result, third_target_data);
 
             assert_eq!(
@@ -445,7 +471,7 @@ mod x11clipboard {
 
         let t2 = std::thread::spawn(move || {
             context
-                .set_target_contents(target, third_target_data)
+                .set_target_contents(target.into(), third_target_data.to_vec())
                 .unwrap();
             std::thread::sleep(Duration::from_millis(500));
         });
@@ -461,12 +487,12 @@ mod x11clipboard {
 
         let mut context = ClipboardContext::new().unwrap();
         context
-            .set_target_contents("initial-target", third_target_data)
+            .set_target_contents("initial-target".into(), third_target_data.to_vec())
             .unwrap();
 
         let t1 = std::thread::spawn(move || {
             let result = context
-                .wait_for_target_contents("second-target", pool_duration)
+                .wait_for_target_contents("second-target".into(), pool_duration)
                 .unwrap();
             assert!(result.is_empty());
         });
@@ -475,7 +501,7 @@ mod x11clipboard {
 
         let t2 = std::thread::spawn(move || {
             let mut hash = HashMap::new();
-            hash.insert("third-target", third_target_data.as_slice());
+            hash.insert("third-target".into(), third_target_data.to_vec());
             context.set_multiple_targets(hash).unwrap();
             std::thread::sleep(Duration::from_millis(500));
         });
@@ -489,15 +515,15 @@ mod x11clipboard {
         let pool_duration = Duration::from_secs(1);
         let mut context = ClipboardContext::new().unwrap();
         context
-            .set_target_contents("initial-target", b"initial")
+            .set_target_contents("initial-target".into(), b"initial".to_vec())
             .unwrap();
         assert!(context
-            .get_target_contents("second-target", pool_duration)
+            .get_target_contents("second-target".into(), pool_duration)
             .unwrap()
             .is_empty());
         assert_eq!(
             context
-                .get_target_contents("initial-target", pool_duration)
+                .get_target_contents("initial-target".into(), pool_duration)
                 .unwrap(),
             b"initial"
         );
