@@ -281,12 +281,12 @@ mod tests {
     type ClipboardContext = WaylandClipboardContext;
 
     fn get_target(target: &str) -> String {
-        let output = Command::new("wl-clipboard")
-            .args(&["-selection", "clipboard", "-o", "-t", target])
+        let output = Command::new("wl-paste")
+            .args(["-t", target])
             .output()
             .expect("failed to execute xclip");
         let contents = String::from_utf8_lossy(&output.stdout);
-        contents.to_string()
+        contents.to_string().trim_end().into()
     }
 
     #[serial_test::serial]
@@ -427,8 +427,8 @@ mod tests {
             let result = context
                 .wait_for_target_contents("jumbo".into(), pool_duration)
                 .unwrap();
-            assert_eq!(String::from_utf8_lossy(c1), get_target("jumbo"));
             assert_eq!(c1.to_vec(), result);
+            assert_eq!(String::from_utf8_lossy(c1), get_target("jumbo"));
 
             let result = context
                 .get_target_contents("html".into(), pool_duration)
