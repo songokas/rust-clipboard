@@ -28,7 +28,7 @@ extern crate objc_foundation;
 extern crate objc_id;
 
 mod common;
-pub use common::ClipboardProvider;
+pub use common::{ClipboardProvider, TargetMimeType};
 
 #[cfg(all(
     unix,
