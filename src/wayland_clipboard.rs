@@ -16,7 +16,12 @@ limitations under the License.
 
 use crate::common::*;
 use core::error::Error;
-use std::{collections::HashSet, io::Read, thread::sleep, time::Duration};
+use std::{
+    collections::HashSet,
+    io::Read,
+    thread::sleep,
+    time::{Duration, Instant},
+};
 use wl_clipboard_rs::{
     copy::{self, MimeSource, Options, ServeRequests},
     paste, utils,
@@ -173,6 +178,7 @@ impl ClipboardProvider for WaylandClipboardContext {
             .map_err(Into::into)
     }
 
+    // wait for target contents by polling for data but not more than 1 second
     fn wait_for_target_contents(
         &mut self,
         target: TargetMimeType,
@@ -190,33 +196,21 @@ impl ClipboardProvider for WaylandClipboardContext {
             ) => Ok(HashSet::new()),
             Err(e) => Err(e),
         };
+        let now = Instant::now();
         let initial_mime_types = mime_types()?;
-        let mut initial = true;
         loop {
-            let current_mime_types = if initial {
-                initial = false;
-                initial_mime_types.clone()
-            } else {
-                mime_types()?
-            };
-            if matches_target(&current_mime_types, &target) {
-                match self.get_target_contents(target.clone(), pool_duration) {
-                    Ok(data) if !data.is_empty() => return Ok(data),
-                    Ok(_) => {
-                        if initial_mime_types != current_mime_types {
-                            return Ok(Vec::new());
-                        }
-                        sleep(pool_duration);
-                        continue;
+            match self.get_target_contents(target.clone(), pool_duration) {
+                Ok(data) if !data.is_empty() => return Ok(data),
+                Ok(_) => {
+                    if initial_mime_types != mime_types()?
+                        || now.elapsed() > Duration::from_millis(999)
+                    {
+                        return self.get_target_contents(target, pool_duration);
                     }
-                    Err(e) => return Err(e),
+                    sleep(pool_duration);
+                    continue;
                 }
-            } else {
-                if initial_mime_types != current_mime_types {
-                    return Ok(Vec::new());
-                }
-                sleep(pool_duration);
-                continue;
+                Err(e) => return Err(e),
             }
         }
     }
@@ -259,15 +253,6 @@ fn get_target(target: TargetMimeType) -> copy::MimeType {
         TargetMimeType::Bitmap => copy::MimeType::Specific(MIME_BITMAP.to_string()),
         TargetMimeType::Files => copy::MimeType::Specific(MIME_URI.to_string()),
         TargetMimeType::Specific(s) => copy::MimeType::Specific(s),
-    }
-}
-
-fn matches_target(types: &HashSet<String>, target: &TargetMimeType) -> bool {
-    match target {
-        TargetMimeType::Text => types.iter().any(|t| t.contains("text")),
-        TargetMimeType::Bitmap => types.iter().any(|t| t.contains("image")),
-        TargetMimeType::Files => types.iter().any(|t| t.contains(MIME_URI)),
-        TargetMimeType::Specific(s) => types.iter().any(|t| t.contains(s)),
     }
 }
 

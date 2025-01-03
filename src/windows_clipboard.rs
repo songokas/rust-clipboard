@@ -30,7 +30,7 @@ use clipboard_win::{get_clipboard_string, set_clipboard_string};
 use std::sync::LazyLock;
 use std::sync::Mutex;
 use std::thread::sleep;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::common::TargetMimeType;
 use crate::ClipboardProvider;
@@ -95,14 +95,16 @@ impl ClipboardProvider for WindowsClipboardContext {
             Some(EnumFormats::new().into_iter().collect())
         };
         let initial_formats: Option<Vec<u32>> = list_formats();
+        let now = Instant::now();
         let mut current_formats;
         loop {
             match self.get_target_contents(target.clone(), poll_duration) {
                 Ok(data) if !data.is_empty() => return Ok(data),
                 Ok(_) => {
-                    current_formats = list_formats();
-                    if initial_formats != current_formats {
-                        return Ok(Vec::new());
+                    if initial_formats != list_formats()
+                        || now.elapsed() > Duration::from_millis(999)
+                    {
+                        return self.get_target_contents(target, poll_duration);
                     }
                     sleep(poll_duration);
                     continue;

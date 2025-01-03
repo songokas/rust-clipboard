@@ -26,7 +26,6 @@ use x11_clipboard::Clipboard as X11Clipboard;
 use crate::common::TargetMimeType;
 use crate::ClipboardProvider;
 
-const MIME_TEXT: &str = "UTF8_STRING";
 const MIME_URI: &str = "text/uri-list";
 const MIME_BITMAP: &str = "image/png";
 
