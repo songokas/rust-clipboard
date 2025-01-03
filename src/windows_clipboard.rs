@@ -96,7 +96,6 @@ impl ClipboardProvider for WindowsClipboardContext {
         };
         let initial_formats: Option<Vec<u32>> = list_formats();
         let now = Instant::now();
-        let mut current_formats;
         loop {
             match self.get_target_contents(target.clone(), poll_duration) {
                 Ok(data) if !data.is_empty() => return Ok(data),
@@ -492,6 +491,7 @@ mod tests {
         let third_target_data = b"third-target-data";
 
         let mut context = ClipboardContext::new().unwrap();
+        context.set_multiple_targets(Vec::new()).unwrap();
         context
             .set_target_contents(MIME_CUSTOM1.into(), third_target_data.to_vec())
             .unwrap();
