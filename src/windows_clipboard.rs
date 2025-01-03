@@ -206,7 +206,7 @@ mod tests {
     #[serial_test::serial]
     #[test]
     fn test_set_get_defined_targets() {
-        let pool_duration = Duration::from_secs(1);
+        let poll_duration = Duration::from_secs(1);
         let mut contents = "hello test".to_string();
         let data = [
             TargetMimeType::Text,
@@ -221,7 +221,7 @@ mod tests {
             context
                 .set_target_contents(target.clone(), contents.as_bytes().to_vec())
                 .unwrap();
-            let result = context.get_target_contents(target, pool_duration).unwrap();
+            let result = context.get_target_contents(target, poll_duration).unwrap();
             assert_eq!(contents.as_bytes(), result);
             assert_eq!(contents.trim_end_matches(char::from(0)), get_target());
         }
@@ -230,14 +230,14 @@ mod tests {
     #[serial_test::serial]
     #[test]
     fn test_set_target_contents() {
-        let pool_duration = Duration::from_secs(1);
+        let poll_duration = Duration::from_secs(1);
         let contents = b"hello test";
         let mut context = ClipboardContext::new().unwrap();
         context
             .set_target_contents(MIME_CUSTOM1.into(), contents.to_vec())
             .unwrap();
         let result = context
-            .get_target_contents(MIME_CUSTOM1.into(), pool_duration)
+            .get_target_contents(MIME_CUSTOM1.into(), poll_duration)
             .unwrap();
         assert_eq!(contents.as_slice(), result);
     }
@@ -245,7 +245,7 @@ mod tests {
     #[serial_test::serial]
     #[test]
     fn test_set_large_target_contents() {
-        let pool_duration = Duration::from_secs(1);
+        let poll_duration = Duration::from_secs(1);
         let mut contents = std::iter::repeat("X").take(100000).collect::<String>();
         contents.push_str("\0");
         let mut context = ClipboardContext::new().unwrap();
@@ -255,7 +255,7 @@ mod tests {
             .set_target_contents(MIME_TEXT.into(), contents.clone().into_bytes())
             .unwrap();
         let result = context
-            .get_target_contents(MIME_TEXT.into(), pool_duration)
+            .get_target_contents(MIME_TEXT.into(), poll_duration)
             .unwrap();
         assert_eq!(contents.len(), result.len());
         assert_eq!(contents.as_bytes(), result);
@@ -265,7 +265,7 @@ mod tests {
     #[serial_test::serial]
     #[test]
     fn test_set_multiple_target_contents() {
-        let pool_duration = Duration::from_secs(1);
+        let poll_duration = Duration::from_secs(1);
         let c1 = "yes plain\0";
         let c2 = "yes html";
         let c3 = "yes files";
@@ -277,17 +277,17 @@ mod tests {
         context.set_multiple_targets(hash).unwrap();
 
         let result = context
-            .get_target_contents(MIME_TEXT.into(), pool_duration)
+            .get_target_contents(MIME_TEXT.into(), poll_duration)
             .unwrap();
         assert_eq!(c1.as_bytes(), result);
 
         let result = context
-            .get_target_contents(MIME_CUSTOM1.into(), pool_duration)
+            .get_target_contents(MIME_CUSTOM1.into(), poll_duration)
             .unwrap();
         assert_eq!(c2.as_bytes(), result);
 
         let result = context
-            .get_target_contents(MIME_CUSTOM2.into(), pool_duration)
+            .get_target_contents(MIME_CUSTOM2.into(), poll_duration)
             .unwrap();
         assert_eq!(c3.as_bytes(), result);
     }
@@ -295,7 +295,7 @@ mod tests {
     #[serial_test::serial]
     #[test]
     fn test_set_multiple_target_contents_with_different_contexts() {
-        let pool_duration = Duration::from_millis(500);
+        let poll_duration = Duration::from_millis(500);
         let c1 = "yes plain".as_bytes();
         let c2 = "yes html".as_bytes();
         let mut context = ClipboardContext::new().unwrap();
@@ -314,12 +314,12 @@ mod tests {
 
         let t2 = std::thread::spawn(move || {
             let result = context
-                .get_target_contents(MIME_CUSTOM1.into(), pool_duration)
+                .get_target_contents(MIME_CUSTOM1.into(), poll_duration)
                 .unwrap();
             assert_eq!(c1.to_vec(), result);
 
             let result = context
-                .get_target_contents(MIME_CUSTOM2.into(), pool_duration)
+                .get_target_contents(MIME_CUSTOM2.into(), poll_duration)
                 .unwrap();
             assert_eq!(c2.to_vec(), result);
             std::thread::sleep(Duration::from_millis(500));
@@ -331,7 +331,7 @@ mod tests {
     #[serial_test::serial]
     #[test]
     fn test_wait_for_target_and_obtain_other_targets() {
-        let pool_duration = Duration::from_secs(1);
+        let poll_duration = Duration::from_secs(1);
         let c1 = b"yes plain";
         let c2 = b"yes html";
         // let c3 = b"yes files";
@@ -342,12 +342,12 @@ mod tests {
         context.set_multiple_targets(Vec::new()).unwrap();
         let t1 = std::thread::spawn(move || {
             let result = context
-                .wait_for_target_contents(MIME_CUSTOM1.into(), pool_duration)
+                .wait_for_target_contents(MIME_CUSTOM1.into(), poll_duration)
                 .unwrap();
             assert_eq!(c1.as_slice(), result);
 
             let result = context
-                .get_target_contents(MIME_CUSTOM2.into(), pool_duration)
+                .get_target_contents(MIME_CUSTOM2.into(), poll_duration)
                 .unwrap();
             assert_eq!(c2.as_slice(), result);
 
@@ -367,7 +367,7 @@ mod tests {
     #[serial_test::serial]
     #[test]
     fn test_wait_for_target_contents_while_changing_selection() {
-        let pool_duration = Duration::from_millis(50);
+        let poll_duration = Duration::from_millis(50);
         let c1 = b"yes files1";
         let c2 = b"yes files2";
 
@@ -376,11 +376,11 @@ mod tests {
 
         let t1 = std::thread::spawn(move || {
             let result = context
-                .wait_for_target_contents(MIME_CUSTOM1.into(), pool_duration)
+                .wait_for_target_contents(MIME_CUSTOM1.into(), poll_duration)
                 .unwrap();
             assert_eq!(c1.to_vec(), result);
             let result = context
-                .wait_for_target_contents(MIME_CUSTOM2.into(), pool_duration)
+                .wait_for_target_contents(MIME_CUSTOM2.into(), poll_duration)
                 .unwrap();
             assert_eq!(c2.to_vec(), result);
             std::thread::sleep(Duration::from_millis(500));
@@ -405,11 +405,11 @@ mod tests {
     #[serial_test::serial]
     #[test]
     fn test_wait_for_non_existing_target() {
-        let pool_duration = Duration::from_millis(100);
+        let poll_duration = Duration::from_millis(100);
         let mut context = ClipboardContext::new().unwrap();
         std::thread::spawn(move || {
             context
-                .wait_for_target_contents(MIME_CUSTOM1.into(), pool_duration)
+                .wait_for_target_contents(MIME_CUSTOM1.into(), poll_duration)
                 .unwrap();
             panic!("should never happen")
         });
@@ -419,18 +419,18 @@ mod tests {
     #[serial_test::serial]
     #[test]
     fn test_wait_for_non_existing_target_contents_while_changing_selection() {
-        let pool_duration = Duration::from_secs(1);
+        let poll_duration = Duration::from_secs(1);
         let c2 = b"yes files2";
 
         let mut context = ClipboardContext::new().unwrap();
 
         let _t1 = std::thread::spawn(move || {
             assert!(context
-                .wait_for_target_contents(MIME_CUSTOM1.into(), pool_duration)
+                .wait_for_target_contents(MIME_CUSTOM1.into(), poll_duration)
                 .unwrap()
                 .is_empty());
             let result = context
-                .wait_for_target_contents(MIME_CUSTOM2.into(), pool_duration)
+                .wait_for_target_contents(MIME_CUSTOM2.into(), poll_duration)
                 .unwrap();
             assert_eq!(c2.to_vec(), result);
         });
@@ -451,7 +451,7 @@ mod tests {
     #[serial_test::serial]
     #[test]
     fn test_empty_data_returned_when_targets_change() {
-        let pool_duration = Duration::from_secs(1);
+        let poll_duration = Duration::from_secs(1);
         let third_target_data = b"third-target-data";
         let target = MIME_CUSTOM3;
 
@@ -460,14 +460,14 @@ mod tests {
 
         let t1 = std::thread::spawn(move || {
             let result = context
-                .get_target_contents(target.into(), pool_duration)
+                .get_target_contents(target.into(), poll_duration)
                 .unwrap();
             assert!(result.is_empty());
 
             std::thread::sleep(Duration::from_millis(200));
 
             let result = context
-                .get_target_contents(target.into(), pool_duration)
+                .get_target_contents(target.into(), poll_duration)
                 .unwrap();
             assert_eq!(result, third_target_data);
             std::thread::sleep(Duration::from_millis(500));
@@ -488,7 +488,7 @@ mod tests {
     #[serial_test::serial]
     #[test]
     fn test_empty_data_returned_when_multiple_targets_change() {
-        let pool_duration = Duration::from_millis(50);
+        let poll_duration = Duration::from_millis(50);
         let third_target_data = b"third-target-data";
 
         let mut context = ClipboardContext::new().unwrap();
@@ -498,7 +498,7 @@ mod tests {
 
         let t1 = std::thread::spawn(move || {
             let result = context
-                .wait_for_target_contents(MIME_CUSTOM2.into(), pool_duration)
+                .wait_for_target_contents(MIME_CUSTOM2.into(), poll_duration)
                 .unwrap();
             assert!(result.is_empty());
         });
@@ -518,18 +518,18 @@ mod tests {
     #[serial_test::serial]
     #[test]
     fn test_get_target_contents_return_immediately() {
-        let pool_duration = Duration::from_secs(1);
+        let poll_duration = Duration::from_secs(1);
         let mut context = ClipboardContext::new().unwrap();
         context
             .set_target_contents(MIME_CUSTOM1.into(), b"initial".to_vec())
             .unwrap();
         assert!(context
-            .get_target_contents(MIME_CUSTOM2.into(), pool_duration)
+            .get_target_contents(MIME_CUSTOM2.into(), poll_duration)
             .unwrap()
             .is_empty());
         assert_eq!(
             context
-                .get_target_contents(MIME_CUSTOM1.into(), pool_duration)
+                .get_target_contents(MIME_CUSTOM1.into(), poll_duration)
                 .unwrap(),
             b"initial"
         );

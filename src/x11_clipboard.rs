@@ -15,7 +15,6 @@ limitations under the License.
 */
 
 // use common::*;
-use std::collections::HashMap;
 use std::error::Error;
 use std::marker::PhantomData;
 use std::time::Duration;
@@ -95,7 +94,7 @@ where
     fn get_target_contents(
         &mut self,
         target: TargetMimeType,
-        pool_duration: Duration,
+        poll_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
         let target = match target {
             TargetMimeType::Text => self.0.getter.atoms.utf8_string,
@@ -111,7 +110,7 @@ where
             S::atom(&self.0.getter.atoms),
             target,
             self.0.getter.atoms.property,
-            pool_duration,
+            poll_duration,
         ) {
             Ok(d) => Ok(d),
             Err(x11_clipboard::error::Error::UnexpectedType(_)) => Ok(Vec::new()),
@@ -122,7 +121,7 @@ where
     fn wait_for_target_contents(
         &mut self,
         target: TargetMimeType,
-        _pool_duration: Duration,
+        _poll_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
         // rely on load wait to return once clipboard is modified
         let target = self.get_target(target)?;
@@ -150,7 +149,7 @@ where
         &mut self,
         targets: impl IntoIterator<Item = (TargetMimeType, Vec<u8>)>,
     ) -> Result<(), Box<dyn Error>> {
-        let hash: Result<HashMap<_, _>, Box<dyn Error>> = targets
+        let hash: Result<Vec<_>, Box<dyn Error>> = targets
             .into_iter()
             .map(|(target, value)| Ok((self.get_target(target)?, value)))
             .collect();
@@ -198,7 +197,7 @@ mod x11clipboard {
     #[serial_test::serial]
     #[test]
     fn test_set_get_defined_targets() {
-        let pool_duration = Duration::from_secs(1);
+        let poll_duration = Duration::from_secs(1);
         let contents = b"hello test";
         let data = [
             (TargetMimeType::Text, MIME_TEXT),
@@ -214,7 +213,7 @@ mod x11clipboard {
             context
                 .set_target_contents(target.clone(), contents.to_vec())
                 .unwrap();
-            let result = context.get_target_contents(target, pool_duration).unwrap();
+            let result = context.get_target_contents(target, poll_duration).unwrap();
             assert_eq!(contents.as_slice(), result);
             assert_eq!(contents, get_target(expected).as_bytes());
         }
@@ -223,14 +222,14 @@ mod x11clipboard {
     #[serial_test::serial]
     #[test]
     fn test_set_target_contents() {
-        let pool_duration = Duration::from_secs(1);
+        let poll_duration = Duration::from_secs(1);
         let contents = b"hello test";
         let mut context = ClipboardContext::new().unwrap();
         context
             .set_target_contents("jumbo".into(), contents.to_vec())
             .unwrap();
         let result = context
-            .get_target_contents("jumbo".into(), pool_duration)
+            .get_target_contents("jumbo".into(), poll_duration)
             .unwrap();
         assert_eq!(contents.to_vec(), result);
         assert_eq!(String::from_utf8_lossy(contents), get_target("jumbo"));
@@ -239,14 +238,14 @@ mod x11clipboard {
     #[serial_test::serial]
     #[test]
     fn test_set_large_target_contents() {
-        let pool_duration = Duration::from_secs(1);
+        let poll_duration = Duration::from_secs(1);
         let contents = std::iter::repeat("X").take(100000).collect::<String>();
         let mut context = ClipboardContext::new().unwrap();
         context
             .set_target_contents("large".into(), contents.clone().into_bytes())
             .unwrap();
         let result = context
-            .get_target_contents("large".into(), pool_duration)
+            .get_target_contents("large".into(), poll_duration)
             .unwrap();
         assert_eq!(contents.as_bytes().to_vec(), result);
         assert_eq!(contents, get_target("large"));
@@ -255,7 +254,7 @@ mod x11clipboard {
     #[serial_test::serial]
     #[test]
     fn test_set_multiple_target_contents() {
-        let pool_duration = Duration::from_secs(1);
+        let poll_duration = Duration::from_secs(1);
         let c1 = "yes plain".as_bytes();
         let c2 = "yes html".as_bytes();
         let c3 = "yes files".as_bytes();
@@ -268,19 +267,19 @@ mod x11clipboard {
         context.set_multiple_targets(hash).unwrap();
 
         let result = context
-            .get_target_contents("jumbo".into(), pool_duration)
+            .get_target_contents("jumbo".into(), poll_duration)
             .unwrap();
         assert_eq!(String::from_utf8_lossy(c1), get_target("jumbo"));
         assert_eq!(c1.to_vec(), result);
 
         let result = context
-            .get_target_contents("html".into(), pool_duration)
+            .get_target_contents("html".into(), poll_duration)
             .unwrap();
         assert_eq!(c2.to_vec(), result);
         assert_eq!(String::from_utf8_lossy(c2), get_target("html".into()));
 
         let result = context
-            .get_target_contents("files".into(), pool_duration)
+            .get_target_contents("files".into(), poll_duration)
             .unwrap();
         assert_eq!(c3.to_vec(), result);
         assert_eq!(String::from_utf8_lossy(c3), get_target("files"));
@@ -289,7 +288,7 @@ mod x11clipboard {
     #[serial_test::serial]
     #[test]
     fn test_set_multiple_target_contents_with_different_contexts() {
-        let pool_duration = Duration::from_millis(500);
+        let poll_duration = Duration::from_millis(500);
         let c1 = "yes plain".as_bytes();
         let c2 = "yes html".as_bytes();
         let c3 = "yes files".as_bytes();
@@ -308,19 +307,19 @@ mod x11clipboard {
 
         let t2 = std::thread::spawn(move || {
             let result = context
-                .get_target_contents("jumbo".into(), pool_duration)
+                .get_target_contents("jumbo".into(), poll_duration)
                 .unwrap();
             assert_eq!(String::from_utf8_lossy(c1), get_target("jumbo"));
             assert_eq!(c1.to_vec(), result);
 
             let result = context
-                .get_target_contents("html".into(), pool_duration)
+                .get_target_contents("html".into(), poll_duration)
                 .unwrap();
             assert_eq!(c2.to_vec(), result);
             assert_eq!(String::from_utf8_lossy(c2), get_target("html"));
 
             let result = context
-                .get_target_contents("files".into(), pool_duration)
+                .get_target_contents("files".into(), poll_duration)
                 .unwrap();
             assert_eq!(c3.to_vec(), result);
             assert_eq!(String::from_utf8_lossy(c3), get_target("files"));
@@ -333,7 +332,7 @@ mod x11clipboard {
     #[serial_test::serial]
     #[test]
     fn test_wait_for_target_and_obtain_other_targets() {
-        let pool_duration = Duration::from_secs(1);
+        let poll_duration = Duration::from_secs(1);
         let c1 = b"yes plain";
         let c2 = b"yes html";
         let c3 = b"yes files";
@@ -345,19 +344,19 @@ mod x11clipboard {
 
         let t1 = std::thread::spawn(move || {
             let result = context
-                .wait_for_target_contents("jumbo".into(), pool_duration)
+                .wait_for_target_contents("jumbo".into(), poll_duration)
                 .unwrap();
             assert_eq!(String::from_utf8_lossy(c1), get_target("jumbo"));
             assert_eq!(c1.to_vec(), result);
 
             let result = context
-                .get_target_contents("html".into(), pool_duration)
+                .get_target_contents("html".into(), poll_duration)
                 .unwrap();
             assert_eq!(c2.to_vec(), result);
             assert_eq!(String::from_utf8_lossy(c2), get_target("html"));
 
             let result = context
-                .get_target_contents("files".into(), pool_duration)
+                .get_target_contents("files".into(), poll_duration)
                 .unwrap();
             assert_eq!(c3.to_vec(), result);
             assert_eq!(String::from_utf8_lossy(c3), get_target("files"));
@@ -377,7 +376,7 @@ mod x11clipboard {
     #[serial_test::serial]
     #[test]
     fn test_wait_for_target_contents_while_changing_selection() {
-        let pool_duration = Duration::from_millis(50);
+        let poll_duration = Duration::from_millis(50);
         let c1 = b"yes files1";
         let c2 = b"yes files2";
 
@@ -385,12 +384,12 @@ mod x11clipboard {
 
         let t1 = std::thread::spawn(move || {
             let result = context
-                .wait_for_target_contents("files1".into(), pool_duration)
+                .wait_for_target_contents("files1".into(), poll_duration)
                 .unwrap();
             assert_eq!(c1.to_vec(), result);
             assert_eq!(String::from_utf8_lossy(c1), get_target("files1"));
             let result = context
-                .wait_for_target_contents("files2".into(), pool_duration)
+                .wait_for_target_contents("files2".into(), poll_duration)
                 .unwrap();
             assert_eq!(c2.to_vec(), result);
             assert_eq!(String::from_utf8_lossy(c2), get_target("files2"));
@@ -416,11 +415,11 @@ mod x11clipboard {
     #[serial_test::serial]
     #[test]
     fn test_wait_for_non_existing_target() {
-        let pool_duration = Duration::from_millis(100);
+        let poll_duration = Duration::from_millis(100);
         let mut context = ClipboardContext::new().unwrap();
         std::thread::spawn(move || {
             context
-                .wait_for_target_contents("non-existing-target".into(), pool_duration)
+                .wait_for_target_contents("non-existing-target".into(), poll_duration)
                 .unwrap();
             panic!("should never happen")
         });
@@ -430,18 +429,18 @@ mod x11clipboard {
     #[serial_test::serial]
     #[test]
     fn test_wait_for_non_existing_target_contents_while_changing_selection() {
-        let pool_duration = Duration::from_secs(1);
+        let poll_duration = Duration::from_secs(1);
         let c2 = b"yes files2";
 
         let mut context = ClipboardContext::new().unwrap();
 
         let _t1 = std::thread::spawn(move || {
             assert!(context
-                .wait_for_target_contents("files1".into(), pool_duration)
+                .wait_for_target_contents("files1".into(), poll_duration)
                 .unwrap()
                 .is_empty());
             let result = context
-                .wait_for_target_contents("files2".into(), pool_duration)
+                .wait_for_target_contents("files2".into(), poll_duration)
                 .unwrap();
             assert_eq!(c2.to_vec(), result);
             assert_eq!(String::from_utf8_lossy(c2), get_target("files2"));
@@ -463,7 +462,7 @@ mod x11clipboard {
     #[serial_test::serial]
     #[test]
     fn test_empty_data_returned_when_targets_change() {
-        let pool_duration = Duration::from_secs(1);
+        let poll_duration = Duration::from_secs(1);
         let third_target_data = b"third-target-data";
         let target = "third-target";
 
@@ -474,14 +473,14 @@ mod x11clipboard {
 
         let t1 = std::thread::spawn(move || {
             let result = context
-                .get_target_contents(target.into(), pool_duration)
+                .get_target_contents(target.into(), poll_duration)
                 .unwrap();
             assert!(result.is_empty());
 
             std::thread::sleep(Duration::from_millis(200));
 
             let result = context
-                .get_target_contents(target.into(), pool_duration)
+                .get_target_contents(target.into(), poll_duration)
                 .unwrap();
             assert_eq!(result, third_target_data);
 
@@ -507,7 +506,7 @@ mod x11clipboard {
     #[serial_test::serial]
     #[test]
     fn test_empty_data_returned_when_multiple_targets_change() {
-        let pool_duration = Duration::from_millis(50);
+        let poll_duration = Duration::from_millis(50);
         let third_target_data = b"third-target-data";
 
         let mut context = ClipboardContext::new().unwrap();
@@ -517,7 +516,7 @@ mod x11clipboard {
 
         let t1 = std::thread::spawn(move || {
             let result = context
-                .wait_for_target_contents("second-target".into(), pool_duration)
+                .wait_for_target_contents("second-target".into(), poll_duration)
                 .unwrap();
             assert!(result.is_empty());
         });
@@ -537,18 +536,18 @@ mod x11clipboard {
     #[serial_test::serial]
     #[test]
     fn test_get_target_contents_return_immediately() {
-        let pool_duration = Duration::from_secs(1);
+        let poll_duration = Duration::from_secs(1);
         let mut context = ClipboardContext::new().unwrap();
         context
             .set_target_contents("initial-target".into(), b"initial".to_vec())
             .unwrap();
         assert!(context
-            .get_target_contents("second-target".into(), pool_duration)
+            .get_target_contents("second-target".into(), poll_duration)
             .unwrap()
             .is_empty());
         assert_eq!(
             context
-                .get_target_contents("initial-target".into(), pool_duration)
+                .get_target_contents("initial-target".into(), poll_duration)
                 .unwrap(),
             b"initial"
         );

@@ -23,7 +23,7 @@ pub enum TargetMimeType {
     Bitmap,
     Files,
     // linux: any string
-    // clipboard formats for windows:
+    // windows: number as string:
     // https://docs.rs/clipboard-win/latest/clipboard_win/formats/index.html#constants
     Specific(String),
 }
