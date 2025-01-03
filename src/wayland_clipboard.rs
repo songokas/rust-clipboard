@@ -1,5 +1,5 @@
 /*
-Copyright 2017 Avraham Weinstock
+Copyright 2019 Gregory Meyer
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,126 +14,143 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// use common::*;
-use std::error::Error;
-use std::marker::PhantomData;
-use std::time::Duration;
-use x11_clipboard::Atom;
-use x11_clipboard::Atoms;
-use x11_clipboard::Clipboard as X11Clipboard;
-
-use crate::common::TargetMimeType;
-use crate::ClipboardProvider;
+use crate::common::*;
+use core::error::Error;
+use std::{
+    collections::HashSet,
+    io::Read,
+    thread::sleep,
+    time::{Duration, Instant},
+};
+use wl_clipboard_rs::{
+    copy::{self, MimeSource, Options, ServeRequests},
+    paste, utils,
+};
 
 const MIME_URI: &str = "text/uri-list";
 const MIME_BITMAP: &str = "image/png";
 
-pub trait Selection {
-    fn atom(atoms: &Atoms) -> Atom;
+/// Interface to the clipboard for Wayland windowing systems.
+///
+/// Other users of the Wayland clipboard will only see the contents
+/// copied to the clipboard so long as the process copying to the
+/// clipboard exists. If you need the contents of the clipboard to
+/// remain after your application shuts down, consider daemonizing the
+/// clipboard components of your application.
+///
+/// `WaylandClipboardContext` automatically detects support for and
+/// uses the primary selection protocol.
+///
+/// # Example
+///
+/// ```noop
+/// use cli_clipboard::ClipboardProvider;
+/// let mut clipboard = cli_clipboard::wayland_clipboard::WaylandClipboardContext::new().unwrap();
+/// clipboard.set_contents("foo bar baz".to_string()).unwrap();
+/// let contents = clipboard.get_contents().unwrap();
+///
+/// assert_eq!(contents, "foo bar baz");
+/// ```
+pub struct WaylandClipboardContext {
+    supports_primary_selection: bool,
 }
 
-pub struct Primary;
+impl ClipboardProvider for WaylandClipboardContext {
+    /// Constructs a new `WaylandClipboardContext` that operates on all
+    /// seats using the data-control clipboard protocol.  This is
+    /// intended for CLI applications that do not create Wayland
+    /// windows.
+    ///
+    /// Attempts to detect whether the primary selection is supported.
+    /// Assumes no primary selection support if no seats are available.
+    /// In addition to returning Err on communication errors (such as
+    /// when operating in an X11 environment), will also return Err if
+    /// the compositor does not support the data-control protocol.
+    fn new() -> Result<WaylandClipboardContext, Box<dyn Error>> {
+        let supports_primary_selection = match utils::is_primary_selection_supported() {
+            Ok(v) => v,
+            Err(utils::PrimarySelectionCheckError::NoSeats) => false,
+            Err(e) => return Err(e.into()),
+        };
 
-impl Selection for Primary {
-    fn atom(atoms: &Atoms) -> Atom {
-        atoms.primary
-    }
-}
-
-pub struct Clipboard;
-
-impl Selection for Clipboard {
-    fn atom(atoms: &Atoms) -> Atom {
-        atoms.clipboard
-    }
-}
-
-pub struct X11ClipboardContext<S = Clipboard>(X11Clipboard, PhantomData<S>)
-where
-    S: Selection;
-
-impl<S> X11ClipboardContext<S>
-where
-    S: Selection,
-{
-    fn get_target(&self, target: TargetMimeType) -> Result<Atom, x11_clipboard::error::Error> {
-        match target {
-            TargetMimeType::Text => Ok(self.0.getter.atoms.utf8_string),
-            TargetMimeType::Bitmap => self.0.getter.get_atom(MIME_BITMAP, false),
-            TargetMimeType::Files => self.0.getter.get_atom(MIME_URI, false),
-            TargetMimeType::Specific(s) => self.0.getter.get_atom(&s, false),
-        }
-    }
-}
-
-impl<S> ClipboardProvider for X11ClipboardContext<S>
-where
-    S: Selection,
-{
-    fn new() -> Result<X11ClipboardContext<S>, Box<dyn Error>> {
-        Ok(X11ClipboardContext(X11Clipboard::new()?, PhantomData))
+        Ok(WaylandClipboardContext {
+            supports_primary_selection,
+        })
     }
 
+    /// Pastes from the Wayland clipboard.
+    ///
+    /// If the Wayland environment supported the primary selection when
+    /// this context was constructed, first checks the primary
+    /// selection. If pasting from the primary selection raises an
+    /// error or the primary selection is unsupported, falls back to
+    /// the regular clipboard.
+    ///
+    /// An empty clipboard is not considered an error, but the
+    /// clipboard must indicate a text MIME type and the contained text
+    /// must be valid UTF-8.
     fn get_contents(&mut self) -> Result<String, Box<dyn Error>> {
-        Ok(String::from_utf8(self.0.load(
-            S::atom(&self.0.getter.atoms),
-            self.0.getter.atoms.utf8_string,
-            self.0.getter.atoms.property,
-            Duration::from_secs(3),
-        )?)?)
-    }
-
-    fn set_contents(&mut self, data: String) -> Result<(), Box<dyn Error>> {
-        Ok(self.0.store(
-            S::atom(&self.0.setter.atoms),
-            self.0.setter.atoms.utf8_string,
-            data,
-        )?)
+        let data = self.get_target_contents(TargetMimeType::Text, Duration::from_millis(500))?;
+        Ok(String::from_utf8(data)?)
     }
 
     fn get_target_contents(
         &mut self,
         target: TargetMimeType,
-        poll_duration: Duration,
-    ) -> Result<Vec<u8>, Box<dyn Error>> {
-        let target = match target {
-            TargetMimeType::Text => self.0.getter.atoms.utf8_string,
-            TargetMimeType::Bitmap => self.0.getter.get_atom(MIME_BITMAP, true)?,
-            TargetMimeType::Files => self.0.getter.get_atom(MIME_URI, true)?,
-            TargetMimeType::Specific(s) => self.0.getter.get_atom(&s, true)?,
-        };
-
-        if target == 0 {
-            return Ok(Vec::new());
-        }
-        match self.0.load(
-            S::atom(&self.0.getter.atoms),
-            target,
-            self.0.getter.atoms.property,
-            poll_duration,
-        ) {
-            Ok(d) => Ok(d),
-            Err(x11_clipboard::error::Error::UnexpectedType(_)) => Ok(Vec::new()),
-            Err(e) => Err(e.into()),
-        }
-    }
-
-    fn wait_for_target_contents(
-        &mut self,
-        target: TargetMimeType,
         _poll_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
-        // rely on load wait to return once clipboard is modified
-        let target = self.get_target(target)?;
-        match self.0.load_wait(
-            S::atom(&self.0.getter.atoms),
-            target,
-            self.0.getter.atoms.property,
-        ) {
-            Ok(d) => Ok(d),
-            Err(x11_clipboard::error::Error::UnexpectedType(_)) => Ok(Vec::new()),
-            Err(e) => Err(e.into()),
+        let mut buf = Vec::new();
+        let mime_type = match &target {
+            TargetMimeType::Text => paste::MimeType::Text,
+            TargetMimeType::Bitmap => paste::MimeType::Specific(MIME_BITMAP),
+            TargetMimeType::Files => paste::MimeType::Specific(MIME_URI),
+            TargetMimeType::Specific(s) => paste::MimeType::Specific(s),
+        };
+        if self.supports_primary_selection {
+            match paste::get_contents(
+                paste::ClipboardType::Primary,
+                paste::Seat::Unspecified,
+                mime_type,
+            ) {
+                Ok((mut reader, _)) => {
+                    // this looks weird, but rustc won't let me do it
+                    // the natural way
+                    reader.read_to_end(&mut buf).map_err(Box::new)?;
+                    return Ok(buf);
+                }
+                Err(e) => match e {
+                    paste::Error::NoSeats
+                    | paste::Error::ClipboardEmpty
+                    | paste::Error::NoMimeType => return Ok(Vec::new()),
+                    _ => (),
+                },
+            }
         }
+
+        let mut reader = match paste::get_contents(
+            paste::ClipboardType::Regular,
+            paste::Seat::Unspecified,
+            mime_type,
+        ) {
+            Ok((reader, _)) => reader,
+            Err(
+                paste::Error::NoSeats | paste::Error::ClipboardEmpty | paste::Error::NoMimeType,
+            ) => return Ok(Vec::new()),
+            Err(e) => return Err(e.into()),
+        };
+
+        reader.read_to_end(&mut buf).map_err(Box::new)?;
+        Ok(buf)
+    }
+
+    /// Copies to the Wayland clipboard.
+    ///
+    /// If the Wayland environment supported the primary selection when
+    /// this context was constructed, this will copy to both the
+    /// primary selection and the regular clipboard. Otherwise, only
+    /// the regular clipboard will be pasted to.
+    fn set_contents(&mut self, data: String) -> Result<(), Box<dyn Error>> {
+        self.set_target_contents(TargetMimeType::Text, data.into_bytes())
     }
 
     fn set_target_contents(
@@ -141,82 +158,131 @@ where
         target: TargetMimeType,
         data: Vec<u8>,
     ) -> Result<(), Box<dyn Error>> {
-        let target = self.get_target(target)?;
-        Ok(self.0.store(S::atom(&self.0.setter.atoms), target, data)?)
+        let target = get_target(target);
+        let mut options = Options::new();
+
+        options
+            .seat(copy::Seat::All)
+            .trim_newline(false)
+            .foreground(false)
+            .serve_requests(ServeRequests::Unlimited);
+
+        if self.supports_primary_selection {
+            options.clipboard(copy::ClipboardType::Both);
+        } else {
+            options.clipboard(copy::ClipboardType::Regular);
+        }
+
+        options
+            .copy(copy::Source::Bytes(data.into()), target)
+            .map_err(Into::into)
+    }
+
+    // wait for target contents by polling for data but not more than 1 second
+    fn wait_for_target_contents(
+        &mut self,
+        target: TargetMimeType,
+        poll_duration: Duration,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
+        let clipboard = if self.supports_primary_selection {
+            paste::ClipboardType::Primary
+        } else {
+            paste::ClipboardType::Regular
+        };
+        let mime_types = || match paste::get_mime_types(clipboard, paste::Seat::Unspecified) {
+            Ok(t) => Ok(t),
+            Err(
+                paste::Error::NoSeats | paste::Error::ClipboardEmpty | paste::Error::NoMimeType,
+            ) => Ok(HashSet::new()),
+            Err(e) => Err(e),
+        };
+        let now = Instant::now();
+        let initial_mime_types = mime_types()?;
+        loop {
+            match self.get_target_contents(target.clone(), poll_duration) {
+                Ok(data) if !data.is_empty() => return Ok(data),
+                Ok(_) => {
+                    if initial_mime_types != mime_types()?
+                        || now.elapsed() > Duration::from_millis(999)
+                    {
+                        return self.get_target_contents(target, poll_duration);
+                    }
+                    sleep(poll_duration);
+                    continue;
+                }
+                Err(e) => return Err(e),
+            }
+        }
     }
 
     fn set_multiple_targets(
         &mut self,
         targets: impl IntoIterator<Item = (TargetMimeType, Vec<u8>)>,
     ) -> Result<(), Box<dyn Error>> {
-        let hash: Result<Vec<_>, Box<dyn Error>> = targets
+        let targets = targets
             .into_iter()
-            .map(|(target, value)| Ok((self.get_target(target)?, value)))
+            .map(|(k, v)| {
+                let mime_type = get_target(k);
+                MimeSource {
+                    source: copy::Source::Bytes(v.into()),
+                    mime_type,
+                }
+            })
             .collect();
-        Ok(self
-            .0
-            .store_multiple(S::atom(&self.0.setter.atoms), hash?)?)
+
+        let mut options = Options::new();
+
+        options
+            .seat(copy::Seat::All)
+            .foreground(false)
+            .serve_requests(ServeRequests::Unlimited);
+
+        if self.supports_primary_selection {
+            options.clipboard(copy::ClipboardType::Both);
+        } else {
+            options.clipboard(copy::ClipboardType::Regular);
+        }
+
+        options.copy_multi(targets).map_err(Into::into)
     }
 }
 
+fn get_target(target: TargetMimeType) -> copy::MimeType {
+    match target {
+        TargetMimeType::Text => copy::MimeType::Text,
+        TargetMimeType::Bitmap => copy::MimeType::Specific(MIME_BITMAP.to_string()),
+        TargetMimeType::Files => copy::MimeType::Specific(MIME_URI.to_string()),
+        TargetMimeType::Specific(s) => copy::MimeType::Specific(s),
+    }
+}
+
+/// these tests require waylaynd with supported compositor
 #[cfg(test)]
-mod x11clipboard {
+mod tests {
+    use std::{collections::HashMap, process::Command, time::Duration};
+
     use super::*;
-    use std::process::Command;
 
-    type ClipboardContext = X11ClipboardContext;
-
-    // fn list_targets() -> String {
-    //     let output = Command::new("xclip")
-    //         .args(&["-selection", "clipboard", "-o", "-t", "TARGETS"])
-    //         .output()
-    //         .expect("failed to execute xclip");
-    //     return String::from_utf8_lossy(&output.stdout).to_string();
-    // }
+    type ClipboardContext = WaylandClipboardContext;
 
     fn get_target(target: &str) -> String {
-        let output = Command::new("xclip")
-            .args(&["-selection", "clipboard", "-o", "-t", target])
+        let output = Command::new("wl-paste")
+            .args(["-t", target])
             .output()
             .expect("failed to execute xclip");
         let contents = String::from_utf8_lossy(&output.stdout);
-        contents.to_string()
+        contents.to_string().trim_end().into()
     }
 
     #[serial_test::serial]
     #[test]
-    fn test_set_get_contents() {
+    fn test_get_set_contents() {
         let contents = "hello test";
         let mut context = ClipboardContext::new().unwrap();
         context.set_contents(contents.to_string()).unwrap();
         let result = context.get_contents().unwrap();
         assert_eq!(contents, result);
         assert_eq!(contents, get_target("UTF8_STRING"));
-    }
-
-    #[serial_test::serial]
-    #[test]
-    fn test_set_get_defined_targets() {
-        let poll_duration = Duration::from_secs(1);
-        let contents = b"hello test";
-        let data = [
-            (TargetMimeType::Text, MIME_TEXT),
-            (TargetMimeType::Files, MIME_URI),
-            (TargetMimeType::Bitmap, MIME_BITMAP),
-            (
-                TargetMimeType::Specific("x-clipsync".to_string()),
-                "x-clipsync",
-            ),
-        ];
-        for (target, expected) in data {
-            let mut context = ClipboardContext::new().unwrap();
-            context
-                .set_target_contents(target.clone(), contents.to_vec())
-                .unwrap();
-            let result = context.get_target_contents(target, poll_duration).unwrap();
-            assert_eq!(contents.as_slice(), result);
-            assert_eq!(contents, get_target(expected).as_bytes());
-        }
     }
 
     #[serial_test::serial]
@@ -346,8 +412,8 @@ mod x11clipboard {
             let result = context
                 .wait_for_target_contents("jumbo".into(), poll_duration)
                 .unwrap();
-            assert_eq!(String::from_utf8_lossy(c1), get_target("jumbo"));
             assert_eq!(c1.to_vec(), result);
+            assert_eq!(String::from_utf8_lossy(c1), get_target("jumbo"));
 
             let result = context
                 .get_target_contents("html".into(), poll_duration)

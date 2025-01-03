@@ -14,15 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-use common::*;
-use objc::runtime::{Object, Class};
-use objc_foundation::{INSArray, INSString, INSObject};
-use objc_foundation::{NSArray, NSDictionary, NSString, NSObject};
+use crate::common::*;
+use crate::Result;
+use objc::runtime::{Class, Object};
+use objc_foundation::{INSArray, INSObject, INSString};
+use objc_foundation::{NSArray, NSDictionary, NSObject, NSString};
 use objc_id::{Id, Owned};
-use std::error::Error;
 use std::mem::transmute;
 
-pub struct OSXClipboardContext {
+pub struct MacOSClipboardContext {
     pasteboard: Id<Object>,
 }
 
@@ -30,17 +30,18 @@ pub struct OSXClipboardContext {
 #[link(name = "AppKit", kind = "framework")]
 extern "C" {}
 
-impl ClipboardProvider for OSXClipboardContext {
-    fn new() -> Result<OSXClipboardContext, Box<dyn Error>> {
-        let cls = try!(Class::get("NSPasteboard").ok_or(err("Class::get(\"NSPasteboard\")")));
+impl ClipboardProvider for MacOSClipboardContext {
+    fn new() -> Result<MacOSClipboardContext> {
+        let cls = Class::get("NSPasteboard").ok_or_else(|| "Class::get(\"NSPasteboard\")")?;
         let pasteboard: *mut Object = unsafe { msg_send![cls, generalPasteboard] };
         if pasteboard.is_null() {
-            return Err(err("NSPasteboard#generalPasteboard returned null"));
+            return Err("NSPasteboard#generalPasteboard returned null".into());
         }
         let pasteboard: Id<Object> = unsafe { Id::from_ptr(pasteboard) };
-        Ok(OSXClipboardContext { pasteboard: pasteboard })
+        Ok(MacOSClipboardContext { pasteboard })
     }
-    fn get_contents(&mut self) -> Result<String, Box<dyn Error>> {
+
+    fn get_contents(&mut self) -> Result<String> {
         let string_class: Id<NSObject> = {
             let cls: Id<Class> = unsafe { Id::from_ptr(class("NSString")) };
             unsafe { transmute(cls) }
@@ -51,25 +52,60 @@ impl ClipboardProvider for OSXClipboardContext {
             let obj: *mut NSArray<NSString> =
                 msg_send![self.pasteboard, readObjectsForClasses:&*classes options:&*options];
             if obj.is_null() {
-                return Err(err("pasteboard#readObjectsForClasses:options: returned null"));
+                return Err("pasteboard#readObjectsForClasses:options: returned null".into());
             }
             Id::from_ptr(obj)
         };
         if string_array.count() == 0 {
-            Err(err("pasteboard#readObjectsForClasses:options: returned empty"))
+            Err("pasteboard#readObjectsForClasses:options: returned empty".into())
         } else {
             Ok(string_array[0].as_str().to_owned())
         }
     }
-    fn set_contents(&mut self, data: String) -> Result<(), Box<dyn Error>> {
+
+    fn set_contents(&mut self, data: String) -> Result<()> {
         let string_array = NSArray::from_vec(vec![NSString::from_str(&data)]);
         let _: usize = unsafe { msg_send![self.pasteboard, clearContents] };
-        let success: bool = unsafe { msg_send![self.pasteboard, writeObjects:string_array] };
-        return if success {
+        let success: bool = unsafe { msg_send![self.pasteboard, writeObjects: string_array] };
+        if success {
             Ok(())
         } else {
-            Err(err("NSPasteboard#writeObjects: returned false"))
-        };
+            Err("NSPasteboard#writeObjects: returned false".into())
+        }
+    }
+
+    fn get_target_contents(
+        &mut self,
+        _target: crate::common::TargetMimeType,
+        _poll_duration: std::time::Duration,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
+        self.get_contents().map(|s| s.into_bytes())
+    }
+
+    fn wait_for_target_contents(
+        &mut self,
+        target: crate::common::TargetMimeType,
+        poll_duration: std::time::Duration,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
+        self.get_target_contents(target, poll_duration)
+    }
+
+    fn set_target_contents(
+        &mut self,
+        _target: crate::common::TargetMimeType,
+        data: Vec<u8>,
+    ) -> Result<(), Box<dyn Error>> {
+        self.set_contents(String::from_utf8(data)?)
+    }
+
+    fn set_multiple_targets(
+        &mut self,
+        targets: impl IntoIterator<Item = (crate::common::TargetMimeType, Vec<u8>)>,
+    ) -> Result<(), Box<dyn Error>> {
+        if let Some((key, value)) = targets.into_iter().next() {
+            return self.set_target_contents(key, value);
+        }
+        Ok(())
     }
 }
 

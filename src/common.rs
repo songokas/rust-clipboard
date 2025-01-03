@@ -14,38 +14,58 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+use core::time::Duration;
 use std::error::Error;
-use std::collections::HashMap;
 
-// pub fn err(s: &str) -> Box<dyn Error> {
-//     Box::<dyn Error + Send + Sync>::from(s)
-// }
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TargetMimeType {
+    Text,
+    Bitmap,
+    Files,
+    // linux: any string
+    // windows: number as string:
+    // https://docs.rs/clipboard-win/latest/clipboard_win/formats/index.html#constants
+    Specific(String),
+}
+
+impl From<&str> for TargetMimeType {
+    fn from(value: &str) -> Self {
+        TargetMimeType::Specific(value.into())
+    }
+}
 
 /// Trait for clipboard access
 pub trait ClipboardProvider: Sized {
     /// Create a context with which to access the clipboard
-    // TODO: consider replacing Box<dyn Error> with an associated type?
     fn new() -> Result<Self, Box<dyn Error>>;
     /// Method to get the clipboard contents as a String
     fn get_contents(&mut self) -> Result<String, Box<dyn Error>>;
     /// Method to set the clipboard contents as a String
-    fn set_contents(&mut self, String) -> Result<(), Box<dyn Error>>;
-    // TODO: come up with some platform-agnostic API for richer types
-    // than just strings (c.f. issue #31)
+    fn set_contents(&mut self, contents: String) -> Result<(), Box<dyn Error>>;
 
-    fn get_target_contents(&mut self, _: impl ToString) -> Result<Vec<u8>, Box<dyn Error>> {
-        return self.get_contents().map(|s| s.as_bytes().to_vec())
-    }
+    /// returns target contents
+    fn get_target_contents(
+        &mut self,
+        target: TargetMimeType,
+        poll_duration: Duration,
+    ) -> Result<Vec<u8>, Box<dyn Error>>;
 
-    fn set_target_contents(&mut self, _: impl ToString, data: &[u8]) -> Result<(), Box<dyn Error>> {
-        return self.set_contents(String::from_utf8(data.to_vec())?)
-    }
+    /// wait until target is available and not empty
+    /// returns if clipboard was updated even if the target requested is not available
+    fn wait_for_target_contents(
+        &mut self,
+        target: TargetMimeType,
+        poll_duration: Duration,
+    ) -> Result<Vec<u8>, Box<dyn Error>>;
 
-    fn set_multiple_targets(&mut self, targets: HashMap<impl ToString, &[u8]>) -> Result<(), Box<dyn Error>> {
-        for (key, value) in targets {
-            return self.set_target_contents(key, value);
-        }
-        return Ok(());
-    }
+    fn set_target_contents(
+        &mut self,
+        target: TargetMimeType,
+        data: Vec<u8>,
+    ) -> Result<(), Box<dyn Error>>;
+
+    fn set_multiple_targets(
+        &mut self,
+        targets: impl IntoIterator<Item = (TargetMimeType, Vec<u8>)>,
+    ) -> Result<(), Box<dyn Error>>;
 }
-
