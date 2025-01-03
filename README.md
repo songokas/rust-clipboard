@@ -1,20 +1,9 @@
 # rust-clipboard
 
 rust-clipboard is a cross-platform library for getting and setting the contents of the OS-level clipboard.  
-It has been tested on Windows, Mac OSX, GNU/Linux, and FreeBSD.
-It is used in Mozilla Servo.
+It has been tested on Windows, GNU/Linux X11 and Wayland and FreeBSD.
 
-[![](http://meritbadge.herokuapp.com/clipboard)](https://crates.io/crates/clipboard)
-[![Appveyor Build Status](https://ci.appveyor.com/api/projects/status/github/aweinstock314/rust-clipboard)](https://ci.appveyor.com/project/aweinstock314/rust-clipboard)
-[![Travis Build Status](https://travis-ci.org/aweinstock314/rust-clipboard.svg?branch=master)](https://travis-ci.org/aweinstock314/rust-clipboard)
-
-## Prerequisites
-
-On Linux you need the x11 library, install it with something like:
-
-```bash
-sudo apt-get install xorg-dev
-```
+Mac OSX - implementation exists but has not been tested
 
 ## Example
 
@@ -36,12 +25,37 @@ fn example() {
 The `ClipboardProvider` trait has the following functions:
 
 ```rust
-fn new() -> Result<Self, Box<Error>>;
-fn get_contents(&mut self) -> Result<String, Box<Error>>;
-fn set_contents(&mut self, String) -> Result<(), Box<Error>>;
+    fn new() -> Result<Self, Box<Error>>;
+
+    fn get_contents(&mut self) -> Result<String, Box<Error>>;
+
+    fn set_contents(&mut self, String) -> Result<(), Box<Error>>;
+
+    fn get_target_contents(
+        &mut self,
+        target: TargetMimeType,
+        poll_duration: Duration,
+    ) -> Result<Vec<u8>, Box<dyn Error>>;
+
+    fn wait_for_target_contents(
+        &mut self,
+        target: TargetMimeType,
+        poll_duration: Duration,
+    ) -> Result<Vec<u8>, Box<dyn Error>>;
+
+    fn set_target_contents(
+        &mut self,
+        target: TargetMimeType,
+        data: Vec<u8>,
+    ) -> Result<(), Box<dyn Error>>;
+
+    fn set_multiple_targets(
+        &mut self,
+        targets: impl IntoIterator<Item = (TargetMimeType, Vec<u8>)>,
+    ) -> Result<(), Box<dyn Error>>;
 ```
 
-`ClipboardContext` is a type alias for one of {`WindowsClipboardContext`, `OSXClipboardContext`, `X11ClipboardContext`, `NopClipboardContext`}, all of which implement `ClipboardProvider`. Which concrete type is chosen for `ClipboardContext` depends on the OS (via conditional compilation).
+`ClipboardContext` is a type alias for one of {`WindowsClipboardContext`, `OSXClipboardContext`, `LinuxClipboardContext`, `NopClipboardContext`}, all of which implement `ClipboardProvider`. Which concrete type is chosen for `ClipboardContext` depends on the OS (via conditional compilation).
 
 ## License
 

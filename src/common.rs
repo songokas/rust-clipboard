@@ -34,36 +34,80 @@ impl From<&str> for TargetMimeType {
     }
 }
 
-/// Trait for clipboard access
 pub trait ClipboardProvider: Sized {
-    /// Create a context with which to access the clipboard
+    /// create a context with which to access the clipboard
     fn new() -> Result<Self, Box<dyn Error>>;
-    /// Method to get the clipboard contents as a String
+    /// method to get the clipboard contents as a String
     fn get_contents(&mut self) -> Result<String, Box<dyn Error>>;
-    /// Method to set the clipboard contents as a String
+    /// method to set the clipboard contents as a String
     fn set_contents(&mut self, contents: String) -> Result<(), Box<dyn Error>>;
 
-    /// returns target contents
+    /// get contents by a specific clipboard target
+    ///
+    /// # Arguments
+    ///
+    /// * target - clipboard format/target
+    /// * poll_duration - how long to wait before returning (x11 clipboard only)
+    ///
+    /// # Returns
+    ///
+    /// Result::Ok - contents of the specific target (empty if not found)
+    /// Result::Err - any error depending on a clipboard implementation
     fn get_target_contents(
         &mut self,
         target: TargetMimeType,
         poll_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>>;
 
-    /// wait until target is available and not empty
-    /// returns if clipboard was updated even if the target requested is not available
+    /// wait until clipboard target is available and not empty
+    ///
+    /// # Arguments
+    ///
+    /// * target - clipboard format/target
+    /// * poll_duration - how long to wait before polling again (no affect on x11)
+    ///
+    /// # Returns
+    ///
+    /// when target does not exist returns depending a clipboard implementation
+    /// wayland - after 1 second or when the clipboard targets change
+    /// x11     - wait indefinitely or until clipboard was updated
+    /// windows - after 1 second or when the clipboard targets change
+    ///
+    /// Result::Ok - contents of the specific target (empty if not found)
+    /// Result::Err - any error depending on a clipboard implementation
     fn wait_for_target_contents(
         &mut self,
         target: TargetMimeType,
         poll_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>>;
 
+    /// set clipboard with a specific target and data
+    ///
+    /// # Arguments
+    ///
+    /// * target - clipboard format/target
+    /// * data - bytes
+    ///
+    /// # Returns
+    ///
+    /// Result::Ok - clipboard successfully updated
+    /// Result::Err - any error depending on a clipboard implementation
     fn set_target_contents(
         &mut self,
         target: TargetMimeType,
         data: Vec<u8>,
     ) -> Result<(), Box<dyn Error>>;
 
+    /// set clipboard with multiple specific targets and data
+    ///
+    /// # Arguments
+    ///
+    /// * targets - clipboard formats/targets with a specific data
+    ///
+    /// # Returns
+    ///
+    /// Result::Ok - clipboard successfully updated
+    /// Result::Err - any error depending on a clipboard implementation
     fn set_multiple_targets(
         &mut self,
         targets: impl IntoIterator<Item = (TargetMimeType, Vec<u8>)>,
