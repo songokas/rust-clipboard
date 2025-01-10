@@ -25,6 +25,7 @@ use x11_clipboard::Clipboard as X11Clipboard;
 use crate::common::TargetMimeType;
 use crate::ClipboardProvider;
 
+const MIME_TEXT: &str = "UTF8_STRING";
 const MIME_URI: &str = "text/uri-list";
 const MIME_BITMAP: &str = "image/png";
 
@@ -79,7 +80,7 @@ where
             S::atom(&self.0.getter.atoms),
             self.0.getter.atoms.utf8_string,
             self.0.getter.atoms.property,
-            Duration::from_secs(3),
+            Duration::from_millis(1000),
         )?)?)
     }
 
@@ -157,22 +158,39 @@ where
             .0
             .store_multiple(S::atom(&self.0.setter.atoms), hash?)?)
     }
+
+    fn list_targets(&self) -> Result<Vec<TargetMimeType>, Box<dyn Error>> {
+        let content = String::from_utf8(self.0.load(
+            S::atom(&self.0.getter.atoms),
+            self.0.getter.atoms.targets,
+            self.0.getter.atoms.property,
+            Duration::from_millis(1000),
+        )?)?;
+        Ok(content
+            .lines()
+            .map(|s| TargetMimeType::Specific(s.to_string()))
+            .collect())
+    }
+
+    fn clear(&mut self) -> Result<(), Box<dyn Error>> {
+        self.set_contents(String::new())
+    }
 }
 
 #[cfg(test)]
 mod x11clipboard {
     use super::*;
-    use std::process::Command;
+    use std::{collections::HashMap, process::Command};
 
     type ClipboardContext = X11ClipboardContext;
 
-    // fn list_targets() -> String {
-    //     let output = Command::new("xclip")
-    //         .args(&["-selection", "clipboard", "-o", "-t", "TARGETS"])
-    //         .output()
-    //         .expect("failed to execute xclip");
-    //     return String::from_utf8_lossy(&output.stdout).to_string();
-    // }
+    fn list_targets() -> String {
+        let output = Command::new("xclip")
+            .args(&["-selection", "clipboard", "-o", "-t", "TARGETS"])
+            .output()
+            .expect("failed to execute xclip");
+        return String::from_utf8_lossy(&output.stdout).to_string();
+    }
 
     fn get_target(target: &str) -> String {
         let output = Command::new("xclip")
@@ -192,6 +210,25 @@ mod x11clipboard {
         let result = context.get_contents().unwrap();
         assert_eq!(contents, result);
         assert_eq!(contents, get_target("UTF8_STRING"));
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn test_list_targets() {
+        let contents = "hello test";
+        let mut context = ClipboardContext::new().unwrap();
+        context.set_contents(contents.to_string()).unwrap();
+        let targets = context
+            .list_targets()
+            .unwrap()
+            .into_iter()
+            .map(|t| match t {
+                TargetMimeType::Specific(s) => s,
+                _ => panic!("unexpected"),
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+        assert_eq!(targets, list_targets());
     }
 
     #[serial_test::serial]

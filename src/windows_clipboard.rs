@@ -89,11 +89,7 @@ impl ClipboardProvider for WindowsClipboardContext {
         target: TargetMimeType,
         poll_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
-        let list_formats = || {
-            let _l = LOCK.lock().expect("Win clipboard lock");
-            let _clip = Clipboard::new_attempts(10).ok()?;
-            Some(EnumFormats::new().into_iter().collect())
-        };
+        let list_formats = || {};
         let initial_formats: Option<Vec<u32>> = list_formats();
         let now = Instant::now();
         loop {
@@ -118,6 +114,7 @@ impl ClipboardProvider for WindowsClipboardContext {
         target: TargetMimeType,
         data: Vec<u8>,
     ) -> Result<(), Box<dyn Error>> {
+        self.clear()?;
         set_target_contents(target, data, false)
     }
 
@@ -125,15 +122,26 @@ impl ClipboardProvider for WindowsClipboardContext {
         &mut self,
         targets: impl IntoIterator<Item = (TargetMimeType, Vec<u8>)>,
     ) -> Result<(), Box<dyn Error>> {
-        {
-            let _l = LOCK.lock().expect("Win clipboard lock");
-            let _clip = Clipboard::new_attempts(10)?;
-            empty()?
-        }
+        self.clear()?;
         for (key, value) in targets {
             set_target_contents(key, value, false)?;
         }
         Ok(())
+    }
+
+    fn list_targets(&self) -> Result<Vec<TargetMimeType>, Box<dyn Error>> {
+        let _l = LOCK.lock().expect("Win clipboard lock");
+        let _clip = Clipboard::new_attempts(10).ok()?;
+        EnumFormats::new()
+            .into_iter()
+            .map(|s| TargetMimeType::Specific(s))
+            .collect()
+    }
+
+    fn clear(&mut self) -> Result<(), Box<dyn Error>> {
+        let _l = LOCK.lock().expect("Win clipboard lock");
+        let _clip = Clipboard::new_attempts(10)?;
+        empty()?
     }
 }
 

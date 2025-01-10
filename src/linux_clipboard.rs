@@ -87,4 +87,18 @@ impl ClipboardProvider for LinuxClipboardContext {
             LinuxContext::X11(context) => context.set_multiple_targets(targets),
         }
     }
+
+    fn list_targets(&self) -> Result<Vec<TargetMimeType>, Box<dyn Error>> {
+        match &self.context {
+            LinuxContext::Wayland(context) => context.list_targets(),
+            LinuxContext::X11(context) => context.list_targets(),
+        }
+    }
+
+    fn clear(&mut self) -> Result<(), Box<dyn Error>> {
+        match &mut self.context {
+            LinuxContext::Wayland(context) => context.clear(),
+            LinuxContext::X11(context) => context.clear(),
+        }
+    }
 }

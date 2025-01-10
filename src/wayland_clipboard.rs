@@ -17,13 +17,12 @@ limitations under the License.
 use crate::common::*;
 use core::error::Error;
 use std::{
-    collections::HashSet,
     io::Read,
     thread::sleep,
     time::{Duration, Instant},
 };
 use wl_clipboard_rs::{
-    copy::{self, MimeSource, Options, ServeRequests},
+    copy::{self, clear, MimeSource, Options, ServeRequests},
     paste, utils,
 };
 
@@ -184,25 +183,13 @@ impl ClipboardProvider for WaylandClipboardContext {
         target: TargetMimeType,
         poll_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
-        let clipboard = if self.supports_primary_selection {
-            paste::ClipboardType::Primary
-        } else {
-            paste::ClipboardType::Regular
-        };
-        let mime_types = || match paste::get_mime_types(clipboard, paste::Seat::Unspecified) {
-            Ok(t) => Ok(t),
-            Err(
-                paste::Error::NoSeats | paste::Error::ClipboardEmpty | paste::Error::NoMimeType,
-            ) => Ok(HashSet::new()),
-            Err(e) => Err(e),
-        };
         let now = Instant::now();
-        let initial_mime_types = mime_types()?;
+        let initial_mime_types = self.list_targets()?;
         loop {
             match self.get_target_contents(target.clone(), poll_duration) {
                 Ok(data) if !data.is_empty() => return Ok(data),
                 Ok(_) => {
-                    if initial_mime_types != mime_types()?
+                    if initial_mime_types != self.list_targets()?
                         || now.elapsed() > Duration::from_millis(999)
                     {
                         return self.get_target_contents(target, poll_duration);
@@ -244,6 +231,30 @@ impl ClipboardProvider for WaylandClipboardContext {
         }
 
         options.copy_multi(targets).map_err(Into::into)
+    }
+
+    fn list_targets(&self) -> Result<Vec<TargetMimeType>, Box<dyn Error>> {
+        let clipboard = if self.supports_primary_selection {
+            paste::ClipboardType::Primary
+        } else {
+            paste::ClipboardType::Regular
+        };
+        match paste::get_mime_types(clipboard, paste::Seat::Unspecified) {
+            Ok(t) => Ok(t.into_iter().map(|s| TargetMimeType::Specific(s)).collect()),
+            Err(
+                paste::Error::NoSeats | paste::Error::ClipboardEmpty | paste::Error::NoMimeType,
+            ) => Ok(Vec::new()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    fn clear(&mut self) -> Result<(), Box<dyn Error>> {
+        let clipboard = if self.supports_primary_selection {
+            copy::ClipboardType::Both
+        } else {
+            copy::ClipboardType::Regular
+        };
+        clear(clipboard, copy::Seat::All).map_err(Into::into)
     }
 }
 

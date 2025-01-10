@@ -72,4 +72,12 @@ impl ClipboardProvider for NopClipboardContext {
         }
         Ok(())
     }
+
+    fn list_targets(&self) -> Result<Vec<crate::TargetMimeType>, Box<dyn Error>> {
+        Ok(Vec::new())
+    }
+
+    fn clear(&mut self) -> Result<(), Box<dyn Error>> {
+        Ok(())
+    }
 }

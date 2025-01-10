@@ -25,6 +25,7 @@ pub enum TargetMimeType {
     // linux: any string
     // windows: number as string:
     // https://docs.rs/clipboard-win/latest/clipboard_win/formats/index.html#constants
+    // osx specific TUI types
     Specific(String),
 }
 
@@ -112,4 +113,10 @@ pub trait ClipboardProvider: Sized {
         &mut self,
         targets: impl IntoIterator<Item = (TargetMimeType, Vec<u8>)>,
     ) -> Result<(), Box<dyn Error>>;
+
+    /// list available targets on a clipboard
+    fn list_targets(&self) -> Result<Vec<TargetMimeType>, Box<dyn Error>>;
+
+    /// empty clipboard
+    fn clear(&mut self) -> Result<(), Box<dyn Error>>;
 }
