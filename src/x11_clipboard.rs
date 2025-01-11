@@ -25,6 +25,7 @@ use x11_clipboard::Clipboard as X11Clipboard;
 use crate::common::TargetMimeType;
 use crate::ClipboardProvider;
 
+#[allow(dead_code)]
 const MIME_TEXT: &str = "UTF8_STRING";
 const MIME_URI: &str = "text/uri-list";
 const MIME_BITMAP: &str = "image/png";
@@ -160,25 +161,25 @@ where
     }
 
     fn list_targets(&self) -> Result<Vec<TargetMimeType>, Box<dyn Error>> {
-        let content = String::from_utf8(self.0.load(
-            S::atom(&self.0.getter.atoms),
-            self.0.getter.atoms.targets,
-            self.0.getter.atoms.property,
-            Duration::from_millis(1000),
-        )?)?;
-        Ok(content
-            .lines()
-            .map(|s| TargetMimeType::Specific(s.to_string()))
-            .collect())
+        let content = self.0.list_target_names(
+            S::atom(&self.0.setter.atoms),
+            Duration::from_millis(100).into(),
+        )?;
+        content
+            .into_iter()
+            .map(|s| Ok(TargetMimeType::Specific(String::from_utf8(s)?)))
+            .collect()
     }
 
     fn clear(&mut self) -> Result<(), Box<dyn Error>> {
-        self.set_contents(String::new())
+        self.0
+            .clear(S::atom(&self.0.setter.atoms))
+            .map_err(Into::into)
     }
 }
 
 #[cfg(test)]
-mod x11clipboard {
+mod tests {
     use super::*;
     use std::{collections::HashMap, process::Command};
 
@@ -228,7 +229,7 @@ mod x11clipboard {
             })
             .collect::<Vec<String>>()
             .join("\n");
-        assert_eq!(targets, list_targets());
+        assert_eq!(targets, list_targets().trim_end());
     }
 
     #[serial_test::serial]

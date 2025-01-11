@@ -182,8 +182,6 @@ mod tests {
     use std::{collections::HashMap, process::Command};
 
     const MIME_TEXT: &str = "1";
-    // const MIME_HTML: &str = "21";
-    // const MIME_FILE: &str = "14";
     const MIME_CUSTOM1: &str = "768";
     const MIME_CUSTOM2: &str = "769";
     const MIME_CUSTOM3: &str = "770";
@@ -208,6 +206,25 @@ mod tests {
         let result = context.get_contents().unwrap();
         assert_eq!(contents, result);
         assert_eq!(contents, get_target());
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn test_list_targets() {
+        let contents = "hello test";
+        let mut context = ClipboardContext::new().unwrap();
+        context.set_contents(contents.to_string()).unwrap();
+        let targets = context
+            .list_targets()
+            .unwrap()
+            .into_iter()
+            .map(|t| match t {
+                TargetMimeType::Specific(s) => s,
+                _ => panic!("unexpected"),
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+        assert_eq!(targets, "1");
     }
 
     #[serial_test::serial]

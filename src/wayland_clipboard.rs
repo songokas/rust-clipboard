@@ -26,6 +26,8 @@ use wl_clipboard_rs::{
     paste, utils,
 };
 
+#[allow(dead_code)]
+const MIME_TEXT: &str = "UTF8_STRING";
 const MIME_URI: &str = "text/uri-list";
 const MIME_BITMAP: &str = "image/png";
 
@@ -285,6 +287,15 @@ mod tests {
         contents.to_string().trim_end().into()
     }
 
+    fn list_targets() -> String {
+        let output = Command::new("wl-paste")
+            .args(["-l"])
+            .output()
+            .expect("failed to execute xclip");
+        let contents = String::from_utf8_lossy(&output.stdout);
+        contents.to_string().trim_end().into()
+    }
+
     #[serial_test::serial]
     #[test]
     fn test_get_set_contents() {
@@ -298,25 +309,53 @@ mod tests {
 
     #[serial_test::serial]
     #[test]
-    fn test_set_target_contents() {
+    fn test_list_targets() {
+        let contents = "hello test";
+        let mut context = ClipboardContext::new().unwrap();
+        context.set_contents(contents.to_string()).unwrap();
+        let targets = context
+            .list_targets()
+            .unwrap()
+            .into_iter()
+            .map(|t| match t {
+                TargetMimeType::Specific(s) => s,
+                _ => panic!("unexpected"),
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+        assert_eq!(targets, list_targets().trim_end());
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn test_set_get_defined_targets() {
         let poll_duration = Duration::from_secs(1);
         let contents = b"hello test";
-        let mut context = ClipboardContext::new().unwrap();
-        context
-            .set_target_contents("jumbo".into(), contents.to_vec())
-            .unwrap();
-        let result = context
-            .get_target_contents("jumbo".into(), poll_duration)
-            .unwrap();
-        assert_eq!(contents.to_vec(), result);
-        assert_eq!(String::from_utf8_lossy(contents), get_target("jumbo"));
+        let data = [
+            (TargetMimeType::Text, MIME_TEXT),
+            (TargetMimeType::Files, MIME_URI),
+            (TargetMimeType::Bitmap, MIME_BITMAP),
+            (
+                TargetMimeType::Specific("x-clipsync".to_string()),
+                "x-clipsync",
+            ),
+        ];
+        for (target, expected) in data {
+            let mut context = ClipboardContext::new().unwrap();
+            context
+                .set_target_contents(target.clone(), contents.to_vec())
+                .unwrap();
+            let result = context.get_target_contents(target, poll_duration).unwrap();
+            assert_eq!(contents.as_slice(), result);
+            assert_eq!(contents, get_target(expected).as_bytes());
+        }
     }
 
     #[serial_test::serial]
     #[test]
     fn test_set_large_target_contents() {
         let poll_duration = Duration::from_secs(1);
-        let contents = std::iter::repeat("X").take(100000).collect::<String>();
+        let contents = "X".repeat(100000);
         let mut context = ClipboardContext::new().unwrap();
         context
             .set_target_contents("large".into(), contents.clone().into_bytes())
