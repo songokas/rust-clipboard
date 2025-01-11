@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::mem::transmute;
 use std::thread::sleep;
 use std::time::Duration;
 use std::time::Instant;
@@ -19,14 +18,14 @@ const MIME_URI: &str = "public.file-url";
 #[allow(dead_code)]
 const MIME_BITMAP: &str = "public.tiff";
 
-pub struct MacOSClipboardContext {
+pub struct OSXClipboardContext {
     pasteboard: Id<NSPasteboard>,
 }
 
-impl ClipboardProvider for MacOSClipboardContext {
-    fn new() -> Result<MacOSClipboardContext, Box<dyn Error>> {
+impl ClipboardProvider for OSXClipboardContext {
+    fn new() -> Result<OSXClipboardContext, Box<dyn Error>> {
         let pasteboard = unsafe { NSPasteboard::generalPasteboard() };
-        Ok(MacOSClipboardContext { pasteboard })
+        Ok(OSXClipboardContext { pasteboard })
     }
 
     fn get_contents(&mut self) -> Result<String, Box<dyn Error>> {
@@ -73,10 +72,9 @@ impl ClipboardProvider for MacOSClipboardContext {
                 .into_iter()
                 .filter_map(|o| {
                     // TODO
-                    // let obj: *const AnyObject = Id::as_ptr(&o); //o.raw_ptr();
-                    // let s = obj as *mut NSString;
-                    // let sref = unsafe { s.as_ref()?};
-                    let sref: &NSString = unsafe { transmute(&o) };
+                    let obj: *const AnyObject = Id::as_ptr(&o);
+                    let s = obj as *mut NSString;
+                    let sref = unsafe { s.as_ref()? };
                     Some(sref.to_string())
                 })
                 .collect::<Vec<String>>()
@@ -267,7 +265,7 @@ mod tests {
     const MIME_CUSTOM2: &str = "public.html";
     const MIME_CUSTOM3: &str = MIME_TEXT;
 
-    type ClipboardContext = MacOSClipboardContext;
+    type ClipboardContext = OSXClipboardContext;
 
     fn get_target() -> String {
         let output = Command::new("pbpaste")
