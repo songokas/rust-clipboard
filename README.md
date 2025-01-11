@@ -1,15 +1,11 @@
 # rust-clipboard
 
 rust-clipboard is a cross-platform library for getting and setting the contents of the OS-level clipboard.  
-It has been tested on Windows, GNU/Linux X11 and Wayland and FreeBSD.
-
-Mac OSX - implementation exists but has not been tested
+It has been tested on Windows, Mac OSX, GNU/Linux X11 and Wayland(certain compositors only).
 
 ## Example
 
 ```rust
-extern crate clipboard;
-
 use clipboard::ClipboardProvider;
 use clipboard::ClipboardContext;
 
@@ -25,8 +21,6 @@ fn example() {
 The `ClipboardProvider` trait has the following functions:
 
 ```rust
-    fn new() -> Result<Self, Box<Error>>;
-
     fn get_contents(&mut self) -> Result<String, Box<Error>>;
 
     fn set_contents(&mut self, String) -> Result<(), Box<Error>>;
@@ -53,6 +47,10 @@ The `ClipboardProvider` trait has the following functions:
         &mut self,
         targets: impl IntoIterator<Item = (TargetMimeType, Vec<u8>)>,
     ) -> Result<(), Box<dyn Error>>;
+
+    fn list_targets(&self) -> Result<Vec<TargetMimeType>, Box<dyn Error>>;
+
+    fn clear(&mut self) -> Result<(), Box<dyn Error>>;
 ```
 
 `ClipboardContext` is a type alias for one of {`WindowsClipboardContext`, `OSXClipboardContext`, `LinuxClipboardContext`, `NopClipboardContext`}, all of which implement `ClipboardProvider`. Which concrete type is chosen for `ClipboardContext` depends on the OS (via conditional compilation).

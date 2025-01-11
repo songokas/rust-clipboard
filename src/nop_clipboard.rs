@@ -14,7 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-use std::error::Error;
+use core::time::Duration;
+use std::{error::Error, thread::sleep};
 
 use crate::ClipboardProvider;
 
@@ -29,7 +30,7 @@ impl ClipboardProvider for NopClipboardContext {
             "Attempting to get the contents of the clipboard, which hasn't yet been \
                   implemented on this platform."
         );
-        Ok("".to_string())
+        Ok(String::new())
     }
     fn set_contents(&mut self, _: String) -> Result<(), Box<dyn Error>> {
         println!(
@@ -52,6 +53,7 @@ impl ClipboardProvider for NopClipboardContext {
         target: crate::common::TargetMimeType,
         poll_duration: std::time::Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
+        sleep(Duration::from_millis(1000));
         self.get_target_contents(target, poll_duration)
     }
 
@@ -67,9 +69,17 @@ impl ClipboardProvider for NopClipboardContext {
         &mut self,
         targets: impl IntoIterator<Item = (crate::common::TargetMimeType, Vec<u8>)>,
     ) -> Result<(), Box<dyn Error>> {
-        if let Some((key, value)) = targets.into_iter().next() {
-            return self.set_target_contents(key, value);
+        for (key, value) in targets {
+            self.set_target_contents(key, value)?;
         }
+        Ok(())
+    }
+
+    fn list_targets(&self) -> Result<Vec<crate::TargetMimeType>, Box<dyn Error>> {
+        Ok(Vec::new())
+    }
+
+    fn clear(&mut self) -> Result<(), Box<dyn Error>> {
         Ok(())
     }
 }

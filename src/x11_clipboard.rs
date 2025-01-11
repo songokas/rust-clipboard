@@ -25,6 +25,8 @@ use x11_clipboard::Clipboard as X11Clipboard;
 use crate::common::TargetMimeType;
 use crate::ClipboardProvider;
 
+#[allow(dead_code)]
+const MIME_TEXT: &str = "UTF8_STRING";
 const MIME_URI: &str = "text/uri-list";
 const MIME_BITMAP: &str = "image/png";
 
@@ -79,7 +81,7 @@ where
             S::atom(&self.0.getter.atoms),
             self.0.getter.atoms.utf8_string,
             self.0.getter.atoms.property,
-            Duration::from_secs(3),
+            Duration::from_millis(1000),
         )?)?)
     }
 
@@ -157,26 +159,43 @@ where
             .0
             .store_multiple(S::atom(&self.0.setter.atoms), hash?)?)
     }
+
+    fn list_targets(&self) -> Result<Vec<TargetMimeType>, Box<dyn Error>> {
+        let content = self.0.list_target_names(
+            S::atom(&self.0.setter.atoms),
+            Duration::from_millis(100).into(),
+        )?;
+        content
+            .into_iter()
+            .map(|s| Ok(TargetMimeType::Specific(String::from_utf8(s)?)))
+            .collect()
+    }
+
+    fn clear(&mut self) -> Result<(), Box<dyn Error>> {
+        self.0
+            .clear(S::atom(&self.0.setter.atoms))
+            .map_err(Into::into)
+    }
 }
 
 #[cfg(test)]
-mod x11clipboard {
+mod tests {
     use super::*;
-    use std::process::Command;
+    use std::{collections::HashMap, process::Command};
 
     type ClipboardContext = X11ClipboardContext;
 
-    // fn list_targets() -> String {
-    //     let output = Command::new("xclip")
-    //         .args(&["-selection", "clipboard", "-o", "-t", "TARGETS"])
-    //         .output()
-    //         .expect("failed to execute xclip");
-    //     return String::from_utf8_lossy(&output.stdout).to_string();
-    // }
+    fn list_targets() -> String {
+        let output = Command::new("xclip")
+            .args(["-selection", "clipboard", "-o", "-t", "TARGETS"])
+            .output()
+            .expect("failed to execute xclip");
+        return String::from_utf8_lossy(&output.stdout).to_string();
+    }
 
     fn get_target(target: &str) -> String {
         let output = Command::new("xclip")
-            .args(&["-selection", "clipboard", "-o", "-t", target])
+            .args(["-selection", "clipboard", "-o", "-t", target])
             .output()
             .expect("failed to execute xclip");
         let contents = String::from_utf8_lossy(&output.stdout);
@@ -192,6 +211,25 @@ mod x11clipboard {
         let result = context.get_contents().unwrap();
         assert_eq!(contents, result);
         assert_eq!(contents, get_target("UTF8_STRING"));
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn test_list_targets() {
+        let contents = "hello test";
+        let mut context = ClipboardContext::new().unwrap();
+        context.set_contents(contents.to_string()).unwrap();
+        let targets = context
+            .list_targets()
+            .unwrap()
+            .into_iter()
+            .map(|t| match t {
+                TargetMimeType::Specific(s) => s,
+                _ => panic!("unexpected"),
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+        assert_eq!(targets, list_targets().trim_end());
     }
 
     #[serial_test::serial]
@@ -239,7 +277,7 @@ mod x11clipboard {
     #[test]
     fn test_set_large_target_contents() {
         let poll_duration = Duration::from_secs(1);
-        let contents = std::iter::repeat("X").take(100000).collect::<String>();
+        let contents = "X".repeat(100000);
         let mut context = ClipboardContext::new().unwrap();
         context
             .set_target_contents("large".into(), contents.clone().into_bytes())
@@ -276,7 +314,7 @@ mod x11clipboard {
             .get_target_contents("html".into(), poll_duration)
             .unwrap();
         assert_eq!(c2.to_vec(), result);
-        assert_eq!(String::from_utf8_lossy(c2), get_target("html".into()));
+        assert_eq!(String::from_utf8_lossy(c2), get_target("html"));
 
         let result = context
             .get_target_contents("files".into(), poll_duration)

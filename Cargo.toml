@@ -12,12 +12,26 @@ edition = "2021"
 clipboard-win = { version = "5", features = ["std", "monitor"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc = "0.2"
-objc_id = "0.1"
-objc-foundation = "0.1"
+objc2 = "0.5"
+objc2-app-kit = { version = "0.2", features = [
+    "NSPasteboard",
+    "NSPasteboardItem",
+    "NSImage",
+] }
+objc2-foundation = { version = "0.2", features = [
+    "block2",
+    "NSEnumerator",
+    "NSArray",
+    "NSString",
+    "NSData",
+    "NSDictionary",
+    "NSRange",
+    "NSURLProtocol",
+] }
+
 
 [target.'cfg(all(unix, not(any(target_os="macos", target_os="android", target_os="emscripten"))))'.dependencies]
-x11-clipboard = { git = "https://github.com/songokas/x11-clipboard.git", tag = "0.10.0" }
+x11-clipboard = { git = "https://github.com/songokas/x11-clipboard.git", tag = "0.10.1" }
 # x11-clipboard = { path = "../x11-clipboard" }
 wl-clipboard-rs = "0.9"
 
