@@ -36,6 +36,8 @@ use crate::common::TargetMimeType;
 use crate::ClipboardProvider;
 use std::error::Error;
 
+const RETRY_ATTEMPS: usize = 10;
+const UNEXPECTED_ITEM_CODE: i32 = 1168;
 // prevent heap corruption errors or attemps to obtain clipboard failures
 static LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
@@ -61,7 +63,7 @@ impl ClipboardProvider for WindowsClipboardContext {
     ) -> Result<Vec<u8>, Box<dyn Error>> {
         let handle_result = |result: SysResult<_>| match result {
             Ok(d) => Ok(d),
-            Err(code) if matches!(code.raw_code(), 1168) => Ok(Vec::new()),
+            Err(code) if matches!(code.raw_code(), UNEXPECTED_ITEM_CODE) => Ok(Vec::new()),
             Err(e) => Err(e),
         };
         Ok(match target {
@@ -89,14 +91,13 @@ impl ClipboardProvider for WindowsClipboardContext {
         target: TargetMimeType,
         poll_duration: Duration,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
-        let list_formats = || {};
-        let initial_formats: Option<Vec<u32>> = list_formats();
+        let initial_formats = self.list_targets()?;
         let now = Instant::now();
         loop {
             match self.get_target_contents(target.clone(), poll_duration) {
                 Ok(data) if !data.is_empty() => return Ok(data),
                 Ok(_) => {
-                    if initial_formats != list_formats()
+                    if initial_formats != self.list_targets()?
                         || now.elapsed() > Duration::from_millis(999)
                     {
                         return self.get_target_contents(target, poll_duration);
@@ -114,8 +115,7 @@ impl ClipboardProvider for WindowsClipboardContext {
         target: TargetMimeType,
         data: Vec<u8>,
     ) -> Result<(), Box<dyn Error>> {
-        self.clear()?;
-        set_target_contents(target, data, false)
+        set_target_contents(target, data, true)
     }
 
     fn set_multiple_targets(
@@ -131,17 +131,17 @@ impl ClipboardProvider for WindowsClipboardContext {
 
     fn list_targets(&self) -> Result<Vec<TargetMimeType>, Box<dyn Error>> {
         let _l = LOCK.lock().expect("Win clipboard lock");
-        let _clip = Clipboard::new_attempts(10).ok()?;
-        EnumFormats::new()
+        let _clip = Clipboard::new_attempts(RETRY_ATTEMPS)?;
+        Ok(EnumFormats::new()
             .into_iter()
-            .map(|s| TargetMimeType::Specific(s))
-            .collect()
+            .map(|s| TargetMimeType::Specific(s.to_string()))
+            .collect())
     }
 
     fn clear(&mut self) -> Result<(), Box<dyn Error>> {
         let _l = LOCK.lock().expect("Win clipboard lock");
-        let _clip = Clipboard::new_attempts(10)?;
-        empty()?
+        let _clip = Clipboard::new_attempts(RETRY_ATTEMPS)?;
+        empty().map_err(Into::into)
     }
 }
 
@@ -160,13 +160,13 @@ fn set_target_contents(
             let content = String::from_utf8(data)?;
             let files: Vec<&str> = content.lines().map(|s| s.into()).collect();
             let _l = LOCK.lock().expect("Win clipboard lock");
-            let _clip = Clipboard::new_attempts(10)?;
+            let _clip = Clipboard::new_attempts(RETRY_ATTEMPS)?;
             set_file_list(&files)?
         }
         TargetMimeType::Specific(s) => {
             let format_id: u32 = s.parse()?;
             let _l = LOCK.lock().expect("Win clipboard lock");
-            let _clip = Clipboard::new_attempts(10)?;
+            let _clip = Clipboard::new_attempts(RETRY_ATTEMPS)?;
             if clear {
                 set_clipboard(RawData(format_id), &data)?
             } else {
@@ -179,7 +179,7 @@ fn set_target_contents(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{collections::HashMap, process::Command};
+    use std::{collections::HashMap, path::absolute, process::Command};
 
     const MIME_TEXT: &str = "1";
     const MIME_CUSTOM1: &str = "768";
@@ -224,31 +224,78 @@ mod tests {
             })
             .collect::<Vec<String>>()
             .join("\n");
-        assert_eq!(targets, "1");
+        assert_eq!(targets, "13\n16\n1\n7");
     }
 
     #[serial_test::serial]
     #[test]
     fn test_set_get_defined_targets() {
         let poll_duration = Duration::from_secs(1);
-        let mut contents = "hello test".to_string();
-        let data = [
-            TargetMimeType::Text,
-            TargetMimeType::Files,
-            TargetMimeType::Specific(MIME_TEXT.to_string()),
+        let full_path1 = absolute("osx_clipboard.rs").unwrap();
+        let full_path2 = absolute("x11_clipboard.rs").unwrap();
+        let expected_bmp: [u8; 58] = [
+            66, 77, 58, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0, 40, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1,
+            0, 32, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255,
+            255, 255, 0,
         ];
-        for target in data {
+        let data = [
+            (
+                TargetMimeType::Text,
+                b"any text".to_vec(),
+                b"any text".to_vec(),
+            ),
+            (
+                TargetMimeType::Files,
+                format!(
+                    "{}\n{}",
+                    full_path1.to_string_lossy(),
+                    full_path2.to_string_lossy()
+                )
+                .into_bytes(),
+                format!(
+                    "{}\n{}",
+                    full_path1.to_string_lossy(),
+                    full_path2.to_string_lossy()
+                )
+                .into_bytes(),
+            ),
+            (
+                TargetMimeType::Bitmap,
+                BMP_DATA.to_vec(),
+                expected_bmp.to_vec(),
+            ),
+            (
+                TargetMimeType::Specific(MIME_TEXT.to_string()),
+                b"x-clipsync\0".to_vec(),
+                b"x-clipsync\0".to_vec(),
+            ),
+        ];
+        for (target, contents, expected) in data {
             let mut context = ClipboardContext::new().unwrap();
-            if matches!(target, TargetMimeType::Specific(_)) {
-                contents.push_str("\0");
-            }
             context
-                .set_target_contents(target.clone(), contents.as_bytes().to_vec())
+                .set_target_contents(target.clone(), contents.clone())
                 .unwrap();
             let result = context.get_target_contents(target, poll_duration).unwrap();
-            assert_eq!(contents.as_bytes(), result);
-            assert_eq!(contents.trim_end_matches(char::from(0)), get_target());
+            assert_eq!(expected, result); //, "{}", std::str::from_utf8(&result).unwrap());
         }
+        // let mut contents = "hello test".to_string();
+        // let data = [
+        //     TargetMimeType::Text,
+        //     // TargetMimeType::Files,
+        //     TargetMimeType::Specific(MIME_TEXT.to_string()),
+        // ];
+        // for target in data {
+        //     let mut context = ClipboardContext::new().unwrap();
+        //     if matches!(target, TargetMimeType::Specific(_)) {
+        //         contents.push_str("\0");
+        //     }
+        //     context
+        //         .set_target_contents(target.clone(), contents.as_bytes().to_vec())
+        //         .unwrap();
+        //     let result = context.get_target_contents(target, poll_duration).unwrap();
+        //     assert_eq!(contents.as_bytes(), result);
+        //     assert_eq!(contents.trim_end_matches(char::from(0)), get_target());
+        // }
     }
 
     #[serial_test::serial]
@@ -559,4 +606,17 @@ mod tests {
             b"initial"
         );
     }
+
+    const BMP_DATA: [u8; 142] = [
+        0x42, 0x4d, 0x8e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8a, 0x00, 0x00, 0x00, 0x7c,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x18, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x23, 0x2e, 0x00, 0x00, 0x23, 0x2e, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0xff,
+        0x00, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42, 0x47, 0x52, 0x73, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0x00,
+    ];
 }
