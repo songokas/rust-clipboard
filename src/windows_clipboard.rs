@@ -261,8 +261,8 @@ mod tests {
                 b"x-clipsync\0".to_vec(),
             ),
         ];
+        let mut context = ClipboardContext::new().unwrap();
         for (target, contents, expected) in data {
-            let mut context = ClipboardContext::new().unwrap();
             context
                 .set_target_contents(target.clone(), contents.clone())
                 .unwrap();
@@ -353,7 +353,6 @@ mod tests {
         });
 
         std::thread::sleep(Duration::from_millis(100));
-
         let mut context = ClipboardContext::new().unwrap();
 
         let t2 = std::thread::spawn(move || {

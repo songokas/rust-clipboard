@@ -330,8 +330,9 @@ mod tests {
                 b"x-clipsync".to_vec(),
             ),
         ];
+
+        let mut context = ClipboardContext::new().unwrap();
         for (target, contents, expected) in data {
-            let mut context = ClipboardContext::new().unwrap();
             context
                 .set_target_contents(target.clone(), contents.clone())
                 .unwrap();
