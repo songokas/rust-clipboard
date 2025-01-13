@@ -483,6 +483,7 @@ mod tests {
 
         let t1 = std::thread::spawn(move || {
             let mut context = ClipboardContext::new().unwrap();
+            context.clear().unwrap();
             let result = context
                 .wait_for_target_contents(MIME_CUSTOM1.into(), poll_duration)
                 .unwrap();

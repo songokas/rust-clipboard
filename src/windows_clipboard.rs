@@ -39,6 +39,7 @@ use std::error::Error;
 
 const RETRY_ATTEMPS: usize = 10;
 const UNEXPECTED_ITEM_CODE: i32 = 1168;
+const INVALID_CLIPBOARD_FORMAT: i32 = -2147221398;
 const MAX_WAIT_DURATION: Duration = Duration::from_millis(999);
 
 // prevent heap corruption errors or attemps to obtain clipboard failures
@@ -66,7 +67,14 @@ impl ClipboardProvider for WindowsClipboardContext {
     ) -> Result<Vec<u8>, Box<dyn Error>> {
         let handle_result = |result: SysResult<_>| match result {
             Ok(d) => Ok(d),
-            Err(code) if matches!(code.raw_code(), UNEXPECTED_ITEM_CODE) => Ok(Vec::new()),
+            Err(code)
+                if matches!(
+                    code.raw_code(),
+                    UNEXPECTED_ITEM_CODE | INVALID_CLIPBOARD_FORMAT
+                ) =>
+            {
+                Ok(Vec::new())
+            }
             Err(e) => Err(e),
         };
         Ok(match target {
@@ -374,7 +382,7 @@ mod tests {
     #[serial_test::serial]
     #[test]
     fn test_wait_for_target_and_obtain_other_targets() {
-        let poll_duration = Duration::from_secs(1);
+        let poll_duration = Duration::from_millis(50);
         let c1 = b"yes plain";
         let c2 = b"yes html";
         // let c3 = b"yes files";
@@ -397,6 +405,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(500));
         });
 
+        std::thread::sleep(Duration::from_millis(100));
         let mut context = ClipboardContext::new().unwrap();
 
         let t2 = std::thread::spawn(move || {
@@ -429,6 +438,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(500));
         });
 
+        std::thread::sleep(Duration::from_millis(100));
         let mut context = ClipboardContext::new().unwrap();
 
         let t2 = std::thread::spawn(move || {
@@ -496,7 +506,7 @@ mod tests {
     #[serial_test::serial]
     #[test]
     fn test_empty_data_returned_when_targets_change() {
-        let poll_duration = Duration::from_secs(1);
+        let poll_duration = Duration::from_millis(50);
         let third_target_data = b"third-target-data";
         let target = MIME_CUSTOM3;
 
@@ -548,6 +558,7 @@ mod tests {
             assert!(result.is_empty());
         });
 
+        std::thread::sleep(Duration::from_millis(100));
         let mut context = ClipboardContext::new().unwrap();
 
         let t2 = std::thread::spawn(move || {
