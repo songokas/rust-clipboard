@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Install sway for wayland
-        run: sudo apt-get install -y sway xvbf xclip wl-clipboard
+        run: sudo apt-get install -y sway xvfb xclip wl-clipboard
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
         with:
