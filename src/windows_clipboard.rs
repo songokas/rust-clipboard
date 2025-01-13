@@ -173,9 +173,9 @@ mod tests {
     use std::{collections::HashMap, path::absolute, process::Command};
 
     const MIME_TEXT: &str = "1";
-    const MIME_CUSTOM1: &str = "768";
-    const MIME_CUSTOM2: &str = "769";
-    const MIME_CUSTOM3: &str = "770";
+    const MIME_CUSTOM1: &str = "600";
+    const MIME_CUSTOM2: &str = "601";
+    const MIME_CUSTOM3: &str = "602";
 
     type ClipboardContext = WindowsClipboardContext;
 
