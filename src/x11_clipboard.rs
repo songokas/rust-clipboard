@@ -418,6 +418,8 @@ mod tests {
     #[serial_test::serial]
     #[test]
     fn test_wait_for_target_contents_while_changing_selection() {
+        // empty data on ci
+        std::thread::sleep(Duration::from_millis(100));
         let poll_duration = Duration::from_millis(50);
         let c1 = b"yes files1";
         let c2 = b"yes files2";
