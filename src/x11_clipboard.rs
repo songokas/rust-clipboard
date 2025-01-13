@@ -438,13 +438,14 @@ mod tests {
             std::thread::sleep(Duration::from_millis(500));
         });
 
+        std::thread::sleep(Duration::from_millis(100));
         let mut context = ClipboardContext::new().unwrap();
 
         let t2 = std::thread::spawn(move || {
             let mut hash = HashMap::new();
             hash.insert("files1".into(), c1.to_vec());
             context.set_multiple_targets(hash.clone()).unwrap();
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(Duration::from_millis(200));
             let mut hash = HashMap::new();
             hash.insert("files2".into(), c2.to_vec());
             context.set_multiple_targets(hash).unwrap();
