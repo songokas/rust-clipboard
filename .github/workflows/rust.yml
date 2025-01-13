@@ -27,8 +27,8 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Run x11 tests
-        run: xvfb-run cargo test --verbose x11_clipboard
+        run: xvfb-run cargo test --verbose x11_clipboard -- --test-threads=1
       - name: Run wayland tests
         run: |
           WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 sway &
-          WAYLAND_DISPLAY=/run/user/1000/wayland-1 cargo test --verbose wayland_clipboard
+          WAYLAND_DISPLAY=/run/user/1000/wayland-1 cargo test --verbose wayland_clipboard -- --test-threads=1
