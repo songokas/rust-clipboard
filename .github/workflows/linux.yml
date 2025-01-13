@@ -30,5 +30,7 @@ jobs:
         run: xvfb-run cargo test --verbose x11_clipboard -- --test-threads=1
       - name: Run wayland tests
         run: |
-          WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 sway &
-          WAYLAND_DISPLAY=/run/user/1000/wayland-1 cargo test --verbose wayland_clipboard -- --test-threads=1
+          WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 sway 2> /dev/null &
+          ls -la /run/user/
+          echo $XDG_RUNTIME_DIR
+          WAYLAND_DISPLAY=$XDG_RUNTIME_DIR/wayland-1 cargo test --verbose wayland_clipboard -- --test-threads=1

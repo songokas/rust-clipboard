@@ -379,10 +379,10 @@ mod tests {
         let c2 = b"yes html";
         // let c3 = b"yes files";
         let mut context = ClipboardContext::new().unwrap();
+        context.clear().unwrap();
         let mut hash = Vec::new();
         hash.push((MIME_CUSTOM1.into(), c1.to_vec()));
         hash.push((MIME_CUSTOM2.into(), c2.to_vec()));
-        context.set_multiple_targets(Vec::new()).unwrap();
         let t1 = std::thread::spawn(move || {
             let result = context
                 .wait_for_target_contents(MIME_CUSTOM1.into(), poll_duration)
@@ -450,6 +450,7 @@ mod tests {
     fn test_wait_for_non_existing_target() {
         let poll_duration = Duration::from_millis(100);
         let mut context = ClipboardContext::new().unwrap();
+        context.clear().unwrap();
         std::thread::spawn(move || {
             context
                 .wait_for_target_contents(MIME_CUSTOM1.into(), poll_duration)
@@ -500,7 +501,7 @@ mod tests {
         let target = MIME_CUSTOM3;
 
         let mut context = ClipboardContext::new().unwrap();
-        context.set_multiple_targets(Vec::new()).unwrap();
+        context.clear().unwrap();
 
         let t1 = std::thread::spawn(move || {
             let result = context
@@ -536,7 +537,6 @@ mod tests {
         let third_target_data = b"third-target-data";
 
         let mut context = ClipboardContext::new().unwrap();
-        context.set_multiple_targets(Vec::new()).unwrap();
         context
             .set_target_contents(MIME_CUSTOM1.into(), third_target_data.to_vec())
             .unwrap();

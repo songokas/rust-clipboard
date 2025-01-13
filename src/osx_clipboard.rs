@@ -494,6 +494,8 @@ mod tests {
             std::thread::sleep(Duration::from_millis(500));
         });
 
+        std::thread::sleep(Duration::from_millis(100));
+
         let t2 = std::thread::spawn(move || {
             let mut context = ClipboardContext::new().unwrap();
             let mut hash = HashMap::new();
